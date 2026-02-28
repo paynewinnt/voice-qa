@@ -1,0 +1,14 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "tts-gui",
+  "outputfilename": "文本语音自动化测试工具",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "",
+  "wailsjsdir": "./frontend/dist",
+  "author": {
+    "name": "TTS Tool",
+    "email": "tts@example.com"
+  }
+}

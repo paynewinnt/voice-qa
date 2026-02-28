@@ -1,0 +1,16 @@
+# Build output
+dist/
+tts
+
+# Third-party binaries
+bin/
+
+# Generated output
+output/
+
+# IDE
+.idea/
+
+# Claude
+.claude/
+CLAUDE.md

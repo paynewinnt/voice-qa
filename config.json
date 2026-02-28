@@ -1,0 +1,19 @@
+{
+  "text_file": "text.txt",
+  "output_dir": "output",
+  "model_file": "",
+  "voice_id": "edge:zh-CN-YunjianNeural",
+  "template": [
+    {"type": "silence", "seconds": 1},
+    {"type": "voice", "text": "小翼管家"},
+    {"type": "silence", "seconds": 2},
+    {"type": "voice", "text": "$MAIN"},
+    {"type": "silence", "seconds": 18},
+    {"type": "voice", "text": "小翼管家"},
+    {"type": "silence", "seconds": 2},
+    {"type": "voice", "text": "返回首页"},
+    {"type": "silence", "seconds": 5}
+  ],
+  "screenshot_before_end": 12,
+  "filename_max_length": 30
+}
