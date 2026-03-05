@@ -184,12 +184,65 @@ type TestResult struct {
 	AssertInfo string
 }
 
-// runPlayMode 运行播放模式
-func runPlayMode(textFile, wavDir string) {
+// buildTextLookup 从文本文件构建 WAV 文件名 -> 原始文本 的映射
+func buildTextLookup(textFile, wavDir string) map[string]string {
+	lookup := make(map[string]string)
 	if textFile == "" {
-		log.Fatal("播放模式需要指定文本文件 (-file 或 config.json 中的 text_file)")
+		return lookup
 	}
 
+	f, err := os.Open(textFile)
+	if err != nil {
+		return lookup
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	lineNum := 0
+	isFirstLine := true
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		if isFirstLine {
+			line = strings.TrimPrefix(line, "\xef\xbb\xbf")
+			isFirstLine = false
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		safeName := sanitizeFileName(truncate(line, cfg.FileNameMaxLength))
+		wavFileName := fmt.Sprintf("%04d%s.wav", lineNum, safeName)
+		wavPath := filepath.Join(wavDir, wavFileName)
+		lookup[wavPath] = line
+	}
+	return lookup
+}
+
+// extractTextFromFileName 从文件名中提取文本（去掉前4位数字序号）
+func extractTextFromFileName(fileName string) string {
+	base := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+	// 去掉前4位数字序号（如 "0001我要看电视" → "我要看电视"）
+	if len(base) > 4 {
+		prefix := base[:4]
+		allDigit := true
+		for _, r := range prefix {
+			if r < '0' || r > '9' {
+				allDigit = false
+				break
+			}
+		}
+		if allDigit {
+			return base[4:]
+		}
+	}
+	return base
+}
+
+// runPlayMode 运行播放模式
+func runPlayMode(textFile, wavDir string) {
 	// 检查 adb 设备
 	fmt.Println("检查 adb 设备连接...")
 	if err := adb.CheckDevice(); err != nil {
@@ -197,18 +250,29 @@ func runPlayMode(textFile, wavDir string) {
 	}
 	fmt.Println("adb 设备已连接")
 
-	// 读取文本文件
-	f, err := os.Open(textFile)
+	// 扫描目录下所有 .wav 文件
+	entries, err := os.ReadDir(wavDir)
 	if err != nil {
-		log.Fatalf("无法打开文件: %v", err)
+		log.Fatalf("无法读取播放目录 %s: %v", wavDir, err)
 	}
-	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
-	lineNum := 0
+	var wavFiles []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".wav") {
+			wavFiles = append(wavFiles, filepath.Join(wavDir, entry.Name()))
+		}
+	}
+
+	if len(wavFiles) == 0 {
+		log.Fatalf("播放目录 %s 中没有找到 .wav 文件", wavDir)
+	}
+
+	// 构建文本查找表（用于断言验证）
+	textLookup := buildTextLookup(textFile, wavDir)
 
 	fmt.Println("---")
 	fmt.Println("开始播放模式")
+	fmt.Printf("找到 %d 个 WAV 文件\n", len(wavFiles))
 	fmt.Printf("流程: 播放语音 -> logcat记录 -> 倒数%.0f秒截图 -> 停止记录 -> 断言验证\n", cfg.ScreenshotBeforeEnd)
 	if cfg.EnableVideoRecording {
 		fmt.Printf("视频录制: 启用 (开始后%.0f秒启动, 结束前%.0f秒停止)\n", cfg.RecordingStartDelay, cfg.RecordingEndBeforeEnd)
@@ -221,45 +285,27 @@ func runPlayMode(textFile, wavDir string) {
 	passCount := 0
 	failCount := 0
 	reportFile := filepath.Join(wavDir, "test_report.txt")
-	isFirstLine := true
 
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-
-		// 处理 UTF-8 BOM (Windows 记事本可能添加)
-		if isFirstLine {
-			line = strings.TrimPrefix(line, "\xef\xbb\xbf")
-			isFirstLine = false
-		}
-		line = strings.TrimSpace(line)
-
-		if line == "" {
-			continue
-		}
-
-		// 构建文件名
-		safeName := sanitizeFileName(truncate(line, cfg.FileNameMaxLength))
-		baseName := fmt.Sprintf("%04d%s", lineNum, safeName)
-
-		wavFile := filepath.Join(wavDir, baseName+".wav")
+	for i, wavFile := range wavFiles {
+		baseName := strings.TrimSuffix(filepath.Base(wavFile), ".wav")
 		logFile := filepath.Join(wavDir, baseName+".log")
 		pngFile := filepath.Join(wavDir, baseName+".png")
 
+		// 从查找表获取原始文本，找不到则从文件名提取
+		originalText := textLookup[wavFile]
+		if originalText == "" {
+			originalText = extractTextFromFileName(filepath.Base(wavFile))
+		}
+		displayText := originalText
+
 		result := TestResult{
-			Text:    line,
+			Text:    displayText,
 			LogFile: logFile,
 			PngFile: pngFile,
 			WavFile: wavFile,
 		}
 
-		// 检查 wav 文件是否存在
-		if _, err := os.Stat(wavFile); os.IsNotExist(err) {
-			fmt.Printf("[%d] %s ... 跳过 (wav文件不存在)\n", lineNum, truncate(line, 30))
-			continue
-		}
-
-		fmt.Printf("[%d] %s\n", lineNum, truncate(line, 30))
+		fmt.Printf("[%d/%d] %s\n", i+1, len(wavFiles), truncate(displayText, 30))
 
 		// 执行播放流程
 		if err := playWithLogAndScreenshot(wavFile, logFile, pngFile); err != nil {
@@ -268,13 +314,12 @@ func runPlayMode(textFile, wavDir string) {
 			result.AssertInfo = fmt.Sprintf("播放错误: %v", err)
 			results = append(results, result)
 			failCount++
-			// 每完成一条就增量保存测试报告
 			saveTestReport(reportFile, results, passCount, failCount)
 			continue
 		}
 
 		// 断言验证
-		passed, assertInfo := assertLogContent(logFile, line)
+		passed, assertInfo := assertLogContent(logFile, originalText)
 		result.Passed = passed
 		result.AssertInfo = assertInfo
 
@@ -294,8 +339,6 @@ func runPlayMode(textFile, wavDir string) {
 			filepath.Base(wavFile))
 
 		results = append(results, result)
-
-		// 每完成一条就增量保存测试报告
 		saveTestReport(reportFile, results, passCount, failCount)
 	}
 
