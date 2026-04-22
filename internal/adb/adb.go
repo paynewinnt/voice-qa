@@ -96,14 +96,19 @@ func findAdb() string {
 	return adbName
 }
 
+// Command 创建一个使用项目内置 adb 优先的命令对象
+func Command(args ...string) *exec.Cmd {
+	return exec.Command(findAdb(), args...)
+}
+
 // LogcatRecorder logcat 记录器
 type LogcatRecorder struct {
-	cmd      *exec.Cmd
-	file     *os.File
-	writer   *bufio.Writer
-	mu       sync.Mutex
-	stopped  bool
-	done     chan struct{} // 用于等待写入 goroutine 完成
+	cmd     *exec.Cmd
+	file    *os.File
+	writer  *bufio.Writer
+	mu      sync.Mutex
+	stopped bool
+	done    chan struct{} // 用于等待写入 goroutine 完成
 }
 
 // StartLogcat 开始记录 logcat 到文件
@@ -225,6 +230,9 @@ func Screenshot(outputPath string) error {
 
 // doScreenshot 使用 screencap 快速截图
 func doScreenshot(outputPath string) error {
+	adbMutex.Lock()
+	defer adbMutex.Unlock()
+
 	adb := findAdb()
 
 	// 设备上的临时截图路径
@@ -237,11 +245,19 @@ func doScreenshot(outputPath string) error {
 		return fmt.Errorf("screencap 失败: %w, 输出: %s", err, string(output))
 	}
 
-	// 拉取截图到本地
-	pullCmd := exec.Command(adb, "pull", devicePngPath, outputPath)
+	// 先拉取到英文临时路径，规避 adb 在 Windows 上处理非 ASCII 路径的问题
+	tmpPull := filepath.Join(filepath.Dir(outputPath), fmt.Sprintf("adb_pull_%d.png", time.Now().UnixNano()))
+	pullCmd := exec.Command(adb, "pull", devicePngPath, tmpPull)
 	hideWindow(pullCmd)
 	if output, err := pullCmd.CombinedOutput(); err != nil {
+		os.Remove(tmpPull)
 		return fmt.Errorf("拉取截图失败: %w, 输出: %s", err, string(output))
+	}
+
+	// 重命名为目标文件名
+	if err := os.Rename(tmpPull, outputPath); err != nil {
+		os.Remove(tmpPull)
+		return fmt.Errorf("重命名截图文件失败: %w", err)
 	}
 
 	// 删除设备上的临时截图
@@ -300,12 +316,12 @@ func Connect(ip string) (string, error) {
 
 // VideoRecorder 视频录制器
 type VideoRecorder struct {
-	cmd            *exec.Cmd
-	devicePath     string
-	localPath      string
-	mu             sync.Mutex
-	stopped        bool
-	maxDuration    int // 最大录制时长（秒）
+	cmd         *exec.Cmd
+	devicePath  string
+	localPath   string
+	mu          sync.Mutex
+	stopped     bool
+	maxDuration int // 最大录制时长（秒）
 }
 
 // getAndroidVersion 获取 Android 版本号
@@ -484,5 +500,37 @@ func StopAllAdbProcesses() {
 	} else {
 		killLogcat := exec.Command("pkill", "-f", "adb.*logcat")
 		killLogcat.Run()
+	}
+}
+
+// Shutdown stops background adb activity and shuts down the local adb server.
+func Shutdown() {
+	StopAllAdbProcesses()
+	stopLocalAdbServer()
+	forceStopLocalAdb()
+}
+
+func stopLocalAdbServer() {
+	cmd := exec.Command(findAdb(), "kill-server")
+	hideWindow(cmd)
+	cmd.Run()
+}
+
+func forceStopLocalAdb() {
+	adbExecutable := findAdb()
+
+	switch runtime.GOOS {
+	case "windows":
+		escapedPath := strings.ReplaceAll(adbExecutable, "'", "''")
+		script := fmt.Sprintf(
+			"$path='%s'; Get-CimInstance Win32_Process -Filter \"Name = 'adb.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -eq $path } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
+			escapedPath,
+		)
+		cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
+		hideWindow(cmd)
+		cmd.Run()
+	case "linux", "darwin":
+		cmd := exec.Command("pkill", "-f", adbExecutable)
+		cmd.Run()
 	}
 }

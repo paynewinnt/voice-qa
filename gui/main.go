@@ -18,14 +18,16 @@ func main() {
 
 	// 创建应用
 	err := wails.Run(&options.App{
-		Title:  "文本语音自动化测试工具",
-		Width:  1000,
-		Height: 750,
+		Title:            "语音播测工具",
+		Width:            1000,
+		Height:           750,
+		WindowStartState: options.Maximised,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 1},
 		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
 		Bind: []interface{}{
 			app,
 		},

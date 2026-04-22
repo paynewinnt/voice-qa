@@ -27,11 +27,11 @@ const defaultModel = "zh_CN-huayan-medium.onnx"
 type App struct {
 	ctx         context.Context
 	cfg         *config.Config
-	ttsEngine   tts.Engine   // TTS 引擎接口
-	generateCmd *exec.Cmd    // 当前生成进程
-	playCmd     *exec.Cmd    // 当前播放进程
-	playDir     string       // 播放目录（默认为 output）
-	cmdMu       sync.Mutex   // 保护 generateCmd 和 playCmd 的互斥锁
+	ttsEngine   tts.Engine // TTS 引擎接口
+	generateCmd *exec.Cmd  // 当前生成进程
+	playCmd     *exec.Cmd  // 当前播放进程
+	playDir     string     // 播放目录（默认为 output）
+	cmdMu       sync.Mutex // 保护 generateCmd 和 playCmd 的互斥锁
 }
 
 // NewApp 创建新的 App 实例
@@ -55,6 +55,23 @@ func (a *App) startup(ctx context.Context) {
 }
 
 // initTTSEngine 初始化 TTS 引擎
+func (a *App) shutdown(ctx context.Context) {
+	a.cmdMu.Lock()
+	genCancel := generateCancel
+	playCancel := playCancel
+	a.cmdMu.Unlock()
+
+	if genCancel != nil {
+		genCancel()
+	}
+	if playCancel != nil {
+		playCancel()
+	}
+
+	player.StopAllPlayback()
+	adb.Shutdown()
+}
+
 func (a *App) initTTSEngine() {
 	voiceID := a.cfg.VoiceID
 	if voiceID == "" {
@@ -569,7 +586,7 @@ func (a *App) ConnectAdb(ip string) AdbResult {
 
 // DisconnectDevice 断开指定 ADB 设备
 func (a *App) DisconnectDevice(serial string) AdbResult {
-	cmd := exec.Command("adb", "disconnect", serial)
+	cmd := adb.Command("disconnect", serial)
 	hideConsoleWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -580,7 +597,7 @@ func (a *App) DisconnectDevice(serial string) AdbResult {
 
 // DisconnectAllDevices 断开所有 ADB 设备
 func (a *App) DisconnectAllDevices() AdbResult {
-	cmd := exec.Command("adb", "disconnect")
+	cmd := adb.Command("disconnect")
 	hideConsoleWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -611,7 +628,7 @@ type InstallApkResult struct {
 // InstallApk 安装 APK 到指定设备
 func (a *App) InstallApk(serial, apkPath string) InstallApkResult {
 	baseName := filepath.Base(apkPath)
-	cmd := exec.Command("adb", "-s", serial, "install", "-r", apkPath)
+	cmd := adb.Command("-s", serial, "install", "-r", apkPath)
 	hideConsoleWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	outStr := strings.TrimSpace(string(output))
@@ -622,6 +639,80 @@ func (a *App) InstallApk(serial, apkPath string) InstallApkResult {
 		return InstallApkResult{Serial: serial, ApkFile: baseName, Success: true, Message: "安装成功"}
 	}
 	return InstallApkResult{Serial: serial, ApkFile: baseName, Success: false, Message: outStr}
+}
+
+// AdbCommandResult ADB 命令执行结果
+type AdbCommandResult struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Command string `json:"command"`
+	Output  string `json:"output"`
+}
+
+// RunAdbCommand 执行 adb 命令，adb 仅使用程序目录或当前目录下的 adb/adb.exe
+func (a *App) RunAdbCommand(serial, commandText string) AdbCommandResult {
+	commandText = strings.TrimSpace(commandText)
+	if commandText == "" {
+		return AdbCommandResult{Success: false, Message: "请输入 ADB 命令"}
+	}
+
+	args, err := adb.ParseArgs(commandText)
+	if err != nil {
+		return AdbCommandResult{Success: false, Message: err.Error()}
+	}
+	if len(args) == 0 {
+		return AdbCommandResult{Success: false, Message: "请输入有效的 ADB 命令"}
+	}
+
+	if strings.EqualFold(args[0], "adb") {
+		args = args[1:]
+	}
+	if len(args) == 0 {
+		return AdbCommandResult{Success: false, Message: "请输入 adb 后面的命令参数"}
+	}
+
+	if serial != "" && !hasAdbSerialArg(args) {
+		args = append([]string{"-s", serial}, args...)
+	}
+
+	cmd := adb.Command(args...)
+	hideConsoleWindow(cmd)
+	output, err := cmd.CombinedOutput()
+	outStr := strings.TrimSpace(string(output))
+	displayCmd := "adb " + strings.Join(args, " ")
+
+	if err != nil {
+		message := err.Error()
+		if outStr != "" {
+			message = outStr
+		}
+		return AdbCommandResult{
+			Success: false,
+			Message: message,
+			Command: displayCmd,
+			Output:  outStr,
+		}
+	}
+
+	if outStr == "" {
+		outStr = "(无输出)"
+	}
+
+	return AdbCommandResult{
+		Success: true,
+		Message: "命令执行成功",
+		Command: displayCmd,
+		Output:  outStr,
+	}
+}
+
+func hasAdbSerialArg(args []string) bool {
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "-s" && strings.TrimSpace(args[i+1]) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func truncate(s string, maxLen int) string {
@@ -650,12 +741,12 @@ func isPunctuation(r rune) bool {
 }
 
 // RunGenerate 运行批量生成语音（在后台执行，进度推送到前端）
-func (a *App) RunGenerate() {
+func (a *App) legacyRunGenerate() {
 	go a.runGenerateInBackground()
 }
 
 // runGenerateInBackground 后台执行生成
-func (a *App) runGenerateInBackground() {
+func (a *App) legacyRunGenerateInBackground() {
 	// 获取 exe 所在目录
 	exePath, err := os.Executable()
 	if err != nil {
@@ -684,9 +775,9 @@ func (a *App) runGenerateInBackground() {
 	// 运行 tts.exe
 	cmd := exec.Command(ttsExe)
 	cmd.Dir = exeDir
-	hideConsoleWindow(cmd)  // 隐藏控制台窗口
+	hideConsoleWindow(cmd) // 隐藏控制台窗口
 	a.cmdMu.Lock()
-	a.generateCmd = cmd     // 保存进程引用
+	a.generateCmd = cmd // 保存进程引用
 	a.cmdMu.Unlock()
 
 	// 获取输出管道
@@ -764,12 +855,12 @@ func (a *App) runGenerateInBackground() {
 }
 
 // RunPlay 运行播放模式（在后台执行，进度推送到前端）
-func (a *App) RunPlay() {
+func (a *App) legacyRunPlay() {
 	go a.runPlayInBackground()
 }
 
 // runPlayInBackground 后台执行播放
-func (a *App) runPlayInBackground() {
+func (a *App) legacyRunPlayInBackground() {
 	// 获取 exe 所在目录
 	exePath, err := os.Executable()
 	if err != nil {
@@ -804,7 +895,7 @@ func (a *App) runPlayInBackground() {
 	cmd.Dir = exeDir
 	hideConsoleWindow(cmd) // 隐藏控制台窗口
 	a.cmdMu.Lock()
-	a.playCmd = cmd        // 保存进程引用
+	a.playCmd = cmd // 保存进程引用
 	a.cmdMu.Unlock()
 
 	// 获取输出管道
@@ -882,7 +973,7 @@ func (a *App) runPlayInBackground() {
 }
 
 // StopPlay 停止播放
-func (a *App) StopPlay() error {
+func (a *App) legacyStopPlay() error {
 	a.cmdMu.Lock()
 	cmd := a.playCmd
 	a.cmdMu.Unlock()
@@ -920,7 +1011,7 @@ func (a *App) StopPlay() error {
 
 // GetConnectedDevices 获取已连接的 ADB 设备列表
 func (a *App) GetConnectedDevices() ([]string, error) {
-	cmd := exec.Command("adb", "devices")
+	cmd := adb.Command("devices")
 	hideConsoleWindow(cmd)
 	output, err := cmd.Output()
 	if err != nil {
@@ -944,7 +1035,7 @@ func (a *App) GetConnectedDevices() ([]string, error) {
 
 // GetDevicePackages 获取设备上的所有包名
 func (a *App) GetDevicePackages(serial string) ([]string, error) {
-	cmd := exec.Command("adb", "-s", serial, "shell", "pm", "list", "packages")
+	cmd := adb.Command("-s", serial, "shell", "pm", "list", "packages")
 	hideConsoleWindow(cmd)
 	output, err := cmd.Output()
 	if err != nil {
@@ -967,14 +1058,14 @@ func (a *App) GetDevicePackages(serial string) ([]string, error) {
 // PerfPrepColdStart 冷启动准备：force-stop + pm clear
 func (a *App) PerfPrepColdStart(serial, packageName string) AdbResult {
 	// force-stop
-	cmd1 := exec.Command("adb", "-s", serial, "shell", "am", "force-stop", packageName)
+	cmd1 := adb.Command("-s", serial, "shell", "am", "force-stop", packageName)
 	hideConsoleWindow(cmd1)
 	if out, err := cmd1.CombinedOutput(); err != nil {
 		return AdbResult{Success: false, Message: fmt.Sprintf("force-stop 失败: %s %v", string(out), err)}
 	}
 
 	// pm clear
-	cmd2 := exec.Command("adb", "-s", serial, "shell", "pm", "clear", packageName)
+	cmd2 := adb.Command("-s", serial, "shell", "pm", "clear", packageName)
 	hideConsoleWindow(cmd2)
 	if out, err := cmd2.CombinedOutput(); err != nil {
 		return AdbResult{Success: false, Message: fmt.Sprintf("pm clear 失败: %s %v", string(out), err)}
@@ -986,12 +1077,12 @@ func (a *App) PerfPrepColdStart(serial, packageName string) AdbResult {
 // PerfForceStopAll 停止所有第三方应用（包括前台正在运行的）
 func (a *App) PerfForceStopAll(serial string) AdbResult {
 	// 获取所有第三方包并逐个 force-stop
-	listCmd := exec.Command("adb", "-s", serial, "shell", "pm", "list", "packages", "-3")
+	listCmd := adb.Command("-s", serial, "shell", "pm", "list", "packages", "-3")
 	hideConsoleWindow(listCmd)
 	listOutput, err := listCmd.Output()
 	if err != nil {
 		// 回退方案
-		cmd2 := exec.Command("adb", "-s", serial, "shell", "am", "kill-all")
+		cmd2 := adb.Command("-s", serial, "shell", "am", "kill-all")
 		hideConsoleWindow(cmd2)
 		cmd2.CombinedOutput()
 		return AdbResult{Success: true, Message: "已执行 am kill-all（获取第三方包列表失败）"}
@@ -1004,7 +1095,7 @@ func (a *App) PerfForceStopAll(serial string) AdbResult {
 		if pkg == "" {
 			continue
 		}
-		stopCmd := exec.Command("adb", "-s", serial, "shell", "am", "force-stop", pkg)
+		stopCmd := adb.Command("-s", serial, "shell", "am", "force-stop", pkg)
 		hideConsoleWindow(stopCmd)
 		stopCmd.Run()
 		stopped++
@@ -1017,7 +1108,7 @@ func (a *App) PerfForceStopAll(serial string) AdbResult {
 func (a *App) PerfGoHome(serial string) AdbResult {
 	// 按两次返回键
 	for i := 0; i < 2; i++ {
-		cmd := exec.Command("adb", "-s", serial, "shell", "input", "keyevent", "KEYCODE_BACK")
+		cmd := adb.Command("-s", serial, "shell", "input", "keyevent", "KEYCODE_BACK")
 		hideConsoleWindow(cmd)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return AdbResult{Success: false, Message: fmt.Sprintf("第%d次返回键失败: %s %v", i+1, string(out), err)}
@@ -1043,7 +1134,7 @@ func (a *App) PerfLaunchActivity(serial, component string) PerfLaunchResult {
 	startTime := time.Now()
 	timestamp := startTime.Format("2006-01-02 15:04:05.000")
 
-	cmd := exec.Command("adb", "-s", serial, "shell", "am", "start", "-W", "-n", component)
+	cmd := adb.Command("-s", serial, "shell", "am", "start", "-W", "-n", component)
 	hideConsoleWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1064,7 +1155,7 @@ func (a *App) PerfLaunchActivity(serial, component string) PerfLaunchResult {
 }
 
 // StopGenerate 停止生成
-func (a *App) StopGenerate() error {
+func (a *App) legacyStopGenerate() error {
 	a.cmdMu.Lock()
 	cmd := a.generateCmd
 	a.cmdMu.Unlock()
@@ -1081,6 +1172,506 @@ func (a *App) StopGenerate() error {
 			"type":    "done",
 			"message": "已停止生成",
 		})
+	}
+	return nil
+}
+
+var (
+	generateCancel context.CancelFunc
+	playCancel     context.CancelFunc
+)
+
+func (a *App) emitTaskEvent(topic, eventType, message string) {
+	runtime.EventsEmit(a.ctx, topic, map[string]interface{}{
+		"type":    eventType,
+		"message": message,
+	})
+}
+
+func (a *App) emitGenerateOutput(message string) {
+	a.emitTaskEvent("generate-output", "output", message)
+}
+
+func (a *App) emitGenerateError(message string) {
+	a.emitTaskEvent("generate-output", "error", message)
+}
+
+func (a *App) emitGenerateDone(message string) {
+	a.emitTaskEvent("generate-output", "done", message)
+}
+
+func (a *App) emitPlayOutput(message string) {
+	a.emitTaskEvent("play-output", "output", message)
+}
+
+func (a *App) emitPlayError(message string) {
+	a.emitTaskEvent("play-output", "error", message)
+}
+
+func (a *App) emitPlayDone(message string) {
+	a.emitTaskEvent("play-output", "done", message)
+}
+
+func (a *App) beginGenerateTask(cancel context.CancelFunc) bool {
+	a.cmdMu.Lock()
+	defer a.cmdMu.Unlock()
+	if generateCancel != nil {
+		return false
+	}
+	generateCancel = cancel
+	return true
+}
+
+func (a *App) finishGenerateTask() {
+	a.cmdMu.Lock()
+	generateCancel = nil
+	a.cmdMu.Unlock()
+}
+
+func (a *App) beginPlayTask(cancel context.CancelFunc) bool {
+	a.cmdMu.Lock()
+	defer a.cmdMu.Unlock()
+	if playCancel != nil {
+		return false
+	}
+	playCancel = cancel
+	return true
+}
+
+func (a *App) finishPlayTask() {
+	a.cmdMu.Lock()
+	playCancel = nil
+	a.cmdMu.Unlock()
+}
+
+func resolveRelativeToExe(path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	if exePath, err := os.Executable(); err == nil {
+		return filepath.Join(filepath.Dir(exePath), path)
+	}
+	return path
+}
+
+func (a *App) resolvedOutputDir() string {
+	outputDir := a.cfg.OutputDir
+	if outputDir == "" {
+		outputDir = "output"
+	}
+	return resolveRelativeToExe(outputDir)
+}
+
+func (a *App) resolvedPlayDir() string {
+	if a.playDir != "" {
+		return resolveRelativeToExe(a.playDir)
+	}
+	return a.resolvedOutputDir()
+}
+
+type playTestResult struct {
+	Text       string
+	LogFile    string
+	PngFile    string
+	WavFile    string
+	Passed     bool
+	AssertInfo string
+}
+
+func buildPlayTextLookup(texts []string, wavDir string, maxLen int) map[string]string {
+	lookup := make(map[string]string)
+	for i, line := range texts {
+		line = strings.TrimSpace(strings.TrimPrefix(line, "\xef\xbb\xbf"))
+		if line == "" {
+			continue
+		}
+		safeName := sanitizeFileName(truncate(line, maxLen))
+		wavPath := filepath.Join(wavDir, fmt.Sprintf("%04d%s.wav", i+1, safeName))
+		lookup[wavPath] = line
+	}
+	return lookup
+}
+
+func extractTextFromFileName(fileName string) string {
+	base := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+	if len(base) > 4 {
+		prefix := base[:4]
+		allDigit := true
+		for _, r := range prefix {
+			if r < '0' || r > '9' {
+				allDigit = false
+				break
+			}
+		}
+		if allDigit {
+			return base[4:]
+		}
+	}
+	return base
+}
+
+func assertLogContent(logFile, expectedQuery string) (bool, string) {
+	data, err := os.ReadFile(logFile)
+	if err != nil {
+		return false, fmt.Sprintf("无法读取日志文件: %v", err)
+	}
+
+	content := string(data)
+	expectedPattern := fmt.Sprintf(`"query":"%s"`, expectedQuery)
+	if strings.Contains(content, expectedPattern) {
+		return true, fmt.Sprintf("找到匹配: %s", expectedPattern)
+	}
+	if strings.Contains(content, `"nlpResult"`) {
+		return false, fmt.Sprintf("日志包含 nlpResult 但未找到 query=\"%s\"", expectedQuery)
+	}
+	return false, "日志中未找到 nlpResult 相关内容"
+}
+
+func savePlayTestReport(reportFile string, results []playTestResult, passCount, failCount int, complete bool) {
+	var sb strings.Builder
+	sb.WriteString("================== 测试执行报告 ==================\n")
+	sb.WriteString(fmt.Sprintf("执行时间: %s\n", time.Now().Format("2006-01-02 15:04:05")))
+	if complete {
+		sb.WriteString("执行状态: 已完成\n")
+	} else {
+		sb.WriteString("执行状态: 执行中/已中断\n")
+	}
+	sb.WriteString(fmt.Sprintf("总计: %d, 通过: %d, 失败: %d\n\n", passCount+failCount, passCount, failCount))
+	sb.WriteString("------------------ 详细结果 ------------------\n")
+
+	for i, r := range results {
+		status := "PASS"
+		if !r.Passed {
+			status = "FAIL"
+		}
+		sb.WriteString(fmt.Sprintf("\n[%d] %s\n", i+1, r.Text))
+		sb.WriteString(fmt.Sprintf("    状态: %s\n", status))
+		sb.WriteString(fmt.Sprintf("    断言: %s\n", r.AssertInfo))
+		sb.WriteString(fmt.Sprintf("    日志: %s\n", filepath.Base(r.LogFile)))
+		sb.WriteString(fmt.Sprintf("    截图: %s\n", filepath.Base(r.PngFile)))
+	}
+
+	sb.WriteString("\n==================================================\n")
+	_ = os.WriteFile(reportFile, []byte(sb.String()), 0644)
+}
+
+func (a *App) playWithArtifacts(ctx context.Context, wavFile, logFile, pngFile string) error {
+	duration, err := player.GetWAVDuration(wavFile)
+	if err != nil {
+		return fmt.Errorf("获取音频时长失败: %w", err)
+	}
+
+	logRecorder, err := adb.StartLogcat(logFile)
+	if err != nil {
+		return fmt.Errorf("启动 logcat 失败: %w", err)
+	}
+	stopLogcat := func() {
+		_ = logRecorder.Stop()
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	screenshotTime := duration - a.cfg.ScreenshotBeforeEnd
+	if screenshotTime < 0 {
+		screenshotTime = duration / 2
+	}
+
+	screenshotDone := make(chan struct{})
+	go func() {
+		defer close(screenshotDone)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(screenshotTime * float64(time.Second))):
+		}
+
+		if err := adb.Screenshot(pngFile); err != nil {
+			a.emitPlayError(fmt.Sprintf("截图失败: %v", err))
+			return
+		}
+		a.emitPlayOutput(fmt.Sprintf("截图完成: %s", filepath.Base(pngFile)))
+	}()
+
+	videoDone := make(chan struct{})
+	if a.cfg.EnableVideoRecording {
+		go func() {
+			defer close(videoDone)
+
+			recordingDuration := duration - a.cfg.RecordingStartDelay - a.cfg.RecordingEndBeforeEnd
+			if recordingDuration <= 0 {
+				a.emitPlayOutput("音频过短，已跳过视频录制")
+				return
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Duration(a.cfg.RecordingStartDelay * float64(time.Second))):
+			}
+
+			mp4File := strings.TrimSuffix(wavFile, ".wav") + ".mp4"
+			recorder, err := adb.StartVideoRecording(mp4File, int(recordingDuration)+5)
+			if err != nil {
+				a.emitPlayError(fmt.Sprintf("启动录制失败: %v", err))
+				return
+			}
+			a.emitPlayOutput(fmt.Sprintf("开始录制: %s", filepath.Base(mp4File)))
+
+			select {
+			case <-ctx.Done():
+			case <-time.After(time.Duration(recordingDuration * float64(time.Second))):
+			}
+
+			if err := recorder.Stop(); err != nil {
+				a.emitPlayError(fmt.Sprintf("停止录制失败: %v", err))
+				return
+			}
+			a.emitPlayOutput(fmt.Sprintf("录制完成: %s", filepath.Base(mp4File)))
+		}()
+	} else {
+		close(videoDone)
+	}
+
+	audioCmd, err := player.PlayAsync(wavFile)
+	if err != nil {
+		stopLogcat()
+		return fmt.Errorf("播放失败: %w", err)
+	}
+
+	waitAudio := make(chan error, 1)
+	go func() {
+		waitAudio <- audioCmd.Wait()
+	}()
+
+	select {
+	case err = <-waitAudio:
+		if err != nil {
+			stopLogcat()
+			<-screenshotDone
+			<-videoDone
+			return fmt.Errorf("播放失败: %w", err)
+		}
+	case <-ctx.Done():
+		player.StopAllPlayback()
+		adb.StopAllAdbProcesses()
+		<-waitAudio
+		stopLogcat()
+		<-screenshotDone
+		<-videoDone
+		return ctx.Err()
+	}
+
+	<-screenshotDone
+	<-videoDone
+
+	select {
+	case <-ctx.Done():
+		stopLogcat()
+		return ctx.Err()
+	case <-time.After(2 * time.Second):
+	}
+
+	stopLogcat()
+	return nil
+}
+
+// RunGenerate starts batch generation directly in the GUI process.
+func (a *App) RunGenerate() {
+	go a.runGenerateInBackground()
+}
+
+func (a *App) runGenerateInBackground() {
+	ctx, cancel := context.WithCancel(context.Background())
+	if !a.beginGenerateTask(cancel) {
+		a.emitGenerateError("当前已有批量生成任务在运行")
+		a.emitGenerateDone("批量生成未启动")
+		return
+	}
+	defer a.finishGenerateTask()
+
+	texts, err := a.GetTextList()
+	if err != nil {
+		a.emitGenerateError(fmt.Sprintf("读取文本失败: %v", err))
+		a.emitGenerateDone("批量生成失败")
+		return
+	}
+	if len(texts) == 0 {
+		a.emitGenerateError("text.txt 中没有可生成的文本")
+		a.emitGenerateDone("批量生成未启动")
+		return
+	}
+
+	outputDir := a.resolvedOutputDir()
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		a.emitGenerateError(fmt.Sprintf("创建输出目录失败: %v", err))
+		a.emitGenerateDone("批量生成失败")
+		return
+	}
+
+	a.emitTaskEvent("generate-output", "start", "开始批量生成语音...")
+	a.emitGenerateOutput(fmt.Sprintf("共 %d 条文本，输出目录: %s", len(texts), outputDir))
+
+	successCount := 0
+	failCount := 0
+
+	for i, text := range texts {
+		if ctx.Err() != nil {
+			a.emitGenerateDone("已停止生成")
+			return
+		}
+
+		text = strings.TrimSpace(text)
+		if text == "" {
+			continue
+		}
+
+		a.emitGenerateOutput(fmt.Sprintf("[%d/%d] %s", i+1, len(texts), truncate(text, 30)))
+		safeName := sanitizeFileName(truncate(text, a.cfg.FileNameMaxLength))
+		outputFile := filepath.Join(outputDir, fmt.Sprintf("%04d%s.wav", i+1, safeName))
+
+		if err := a.generateFullAudio(text, outputFile); err != nil {
+			failCount++
+			a.emitGenerateError(fmt.Sprintf("生成失败: %s -> %v", filepath.Base(outputFile), err))
+			continue
+		}
+
+		successCount++
+		a.emitGenerateOutput(fmt.Sprintf("生成完成 -> %s", filepath.Base(outputFile)))
+	}
+
+	if ctx.Err() != nil {
+		a.emitGenerateDone("已停止生成")
+		return
+	}
+
+	a.emitGenerateDone(fmt.Sprintf("批量生成完成，成功 %d 条，失败 %d 条", successCount, failCount))
+}
+
+// RunPlay starts play mode directly in the GUI process.
+func (a *App) RunPlay() {
+	go a.runPlayInBackground()
+}
+
+func (a *App) runPlayInBackground() {
+	ctx, cancel := context.WithCancel(context.Background())
+	if !a.beginPlayTask(cancel) {
+		a.emitPlayError("当前已有播放任务在运行")
+		a.emitPlayDone("播放未启动")
+		return
+	}
+	defer a.finishPlayTask()
+
+	wavDir := a.resolvedPlayDir()
+	entries, err := os.ReadDir(wavDir)
+	if err != nil {
+		a.emitPlayError(fmt.Sprintf("无法读取播放目录: %v", err))
+		a.emitPlayDone("播放失败")
+		return
+	}
+
+	var wavFiles []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".wav") {
+			wavFiles = append(wavFiles, filepath.Join(wavDir, entry.Name()))
+		}
+	}
+	if len(wavFiles) == 0 {
+		a.emitPlayError("播放目录中没有 wav 文件")
+		a.emitPlayDone("播放未启动")
+		return
+	}
+
+	texts, _ := a.GetTextList()
+	textLookup := buildPlayTextLookup(texts, wavDir, a.cfg.FileNameMaxLength)
+	reportFile := filepath.Join(wavDir, "test_report.txt")
+
+	a.emitTaskEvent("play-output", "start", "开始播放模式...")
+	a.emitPlayOutput(fmt.Sprintf("共 %d 个 wav 文件，目录: %s", len(wavFiles), wavDir))
+
+	results := make([]playTestResult, 0, len(wavFiles))
+	passCount := 0
+	failCount := 0
+
+	for i, wavFile := range wavFiles {
+		if ctx.Err() != nil {
+			savePlayTestReport(reportFile, results, passCount, failCount, false)
+			a.emitPlayDone("已停止播放")
+			return
+		}
+
+		baseName := strings.TrimSuffix(filepath.Base(wavFile), ".wav")
+		logFile := filepath.Join(wavDir, baseName+".log")
+		pngFile := filepath.Join(wavDir, baseName+".png")
+
+		originalText := textLookup[wavFile]
+		if originalText == "" {
+			originalText = extractTextFromFileName(filepath.Base(wavFile))
+		}
+
+		result := playTestResult{
+			Text:    originalText,
+			LogFile: logFile,
+			PngFile: pngFile,
+			WavFile: wavFile,
+		}
+
+		a.emitPlayOutput(fmt.Sprintf("[%d/%d] %s", i+1, len(wavFiles), truncate(originalText, 30)))
+		err := a.playWithArtifacts(ctx, wavFile, logFile, pngFile)
+		if err != nil {
+			if ctx.Err() != nil {
+				savePlayTestReport(reportFile, results, passCount, failCount, false)
+				a.emitPlayDone("已停止播放")
+				return
+			}
+
+			result.Passed = false
+			result.AssertInfo = fmt.Sprintf("播放失败: %v", err)
+			results = append(results, result)
+			failCount++
+			savePlayTestReport(reportFile, results, passCount, failCount, false)
+			a.emitPlayError(result.AssertInfo)
+			continue
+		}
+
+		passed, assertInfo := assertLogContent(logFile, originalText)
+		result.Passed = passed
+		result.AssertInfo = assertInfo
+		results = append(results, result)
+		if passed {
+			passCount++
+			a.emitPlayOutput(fmt.Sprintf("断言通过: %s", filepath.Base(logFile)))
+		} else {
+			failCount++
+			a.emitPlayError(fmt.Sprintf("断言失败: %s", assertInfo))
+		}
+		savePlayTestReport(reportFile, results, passCount, failCount, false)
+	}
+
+	savePlayTestReport(reportFile, results, passCount, failCount, true)
+	a.emitPlayDone(fmt.Sprintf("播放模式完成，成功 %d 条，失败 %d 条", passCount, failCount))
+}
+
+func (a *App) StopPlay() error {
+	a.cmdMu.Lock()
+	cancel := playCancel
+	a.cmdMu.Unlock()
+
+	if cancel != nil {
+		a.emitPlayOutput("正在停止，等待资源清理...")
+		cancel()
+		player.StopAllPlayback()
+		adb.StopAllAdbProcesses()
+	}
+	return nil
+}
+
+func (a *App) StopGenerate() error {
+	a.cmdMu.Lock()
+	cancel := generateCancel
+	a.cmdMu.Unlock()
+
+	if cancel != nil {
+		cancel()
 	}
 	return nil
 }
