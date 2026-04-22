@@ -2,6 +2,8 @@
 
 面向 Android 设备的语音指令自动化测试工具，集 TTS 音频生成、播放测试、应用性能测试和设备管理于一体。
 
+当前仓库以 Linux CLI 和 Windows GUI/打包为主，不提供 macOS 运行支持。
+
 ## 功能特性
 
 - **TTS 音频生成**
@@ -11,9 +13,12 @@
 - **播放模式测试**：播放语音 + adb logcat 记录 + 自动截图 + 视频录制 + 断言验证
 - **应用性能测试**：冷启动时间采集，统计均值和标准差
 - **设备管理**：ADB 连接/断开、多设备 APK 安装
+- Windows GUI 播放链路按选定设备执行，避免多设备误打
+- Windows GUI 每次播放生成独立会话目录，历史报告、日志、截图、录屏不互相覆盖
+- Windows GUI 生成阶段持久化 `manifest.json`，播放阶段优先按 `wav -> 原文` 映射断言
 - 增量保存测试报告（中途停止也能保存已完成的结果）
 - 图形界面版本（Windows GUI）
-- 跨平台支持（Linux / Windows）
+- 支持平台：Linux / Windows
 
 ## 项目结构
 
@@ -50,6 +55,8 @@ voice-qa/
 
 ### 1. 下载依赖
 
+`download.sh` 用于在 Linux 开发环境下载 Piper 和中文模型；macOS 不在支持范围内。
+
 ```bash
 # 下载 Piper 引擎和中文模型
 ./scripts/download.sh
@@ -58,14 +65,11 @@ voice-qa/
 ### 2. 构建
 
 ```bash
-# 构建所有版本（Linux + Windows + GUI）
+# 构建所有版本（Linux CLI + Windows GUI）
 ./scripts/build.sh all
 
 # 仅构建 Linux
 ./scripts/build.sh linux
-
-# 仅构建 Windows 命令行版
-./scripts/build.sh windows
 
 # 仅构建 Windows GUI 版
 ./scripts/build.sh gui
@@ -182,29 +186,49 @@ scripts\build.bat -Target gui
 
 ## 输出文件
 
-文件命名格式：`序号 + 文本内容.wav`
+以下目录结构说明针对 Windows GUI 默认行为。
+
+生成的音频文件命名格式为：`序号 + 文本内容.wav`
+
+生成阶段会在输出目录维护 `manifest.json`，用于记录 `wav -> 原文` 映射，播放模式会优先读取它来做断言。
+
+播放阶段不会再把 `log/png/mp4/report` 直接铺在输出目录根下，而是为每次执行创建独立会话目录 `playtest-*`。
 
 ```
 output/
 ├── 0001我要看电视.wav
-├── 0001我要看电视.log    # 播放模式生成
-├── 0001我要看电视.png    # 播放模式生成
 ├── 0002我要打电话.wav
-├── test_report.txt       # 测试报告
+├── manifest.json
+├── playtest-20260422-153045-1713771045123456000/
+│   ├── 0001我要看电视.log
+│   ├── 0001我要看电视.png
+│   ├── 0001我要看电视.mp4   # 启用视频录制时生成
+│   ├── 0002我要打电话.log
+│   └── test_report.txt
 └── ...
 ```
 
 ## 播放模式
 
-播放模式用于自动化测试，需要连接 Android 设备。每条语音的执行流程：
+播放模式用于自动化测试，需要连接 Android 设备。以下流程说明针对 Windows GUI。
+
+GUI 下多设备场景需要先选择目标设备，播放链路中的 logcat、截图、录屏、停止清理都会绑定到该设备。
+
+每条语音的执行流程：
 
 1. 启动 logcat 录制
 2. 播放 WAV 文件
 3. 在语音结束前 N 秒自动截图（由 `screenshot_before_end` 控制）
 4. 可选：在播放期间录制设备屏幕视频（由 `enable_video_recording` 控制）
-5. 停止 logcat 录制
+5. 停止 logcat 录制，并从完整日志中裁剪出本次播放窗口
 6. 断言验证：检查 logcat 中是否包含预期的 `"query":"<文本>"` 字段
-7. 增量保存测试报告（中途中断也保留已完成结果）
+7. 将日志、截图、录屏、报告写入本次 `playtest-*` 会话目录
+8. 增量保存测试报告（中途中断也保留已完成结果）
+
+CLI 的 `./tts -play` 目前仍沿用传统行为：
+- 直接扫描播放目录中的 `.wav` 文件
+- 在播放目录根下输出 `.log`、`.png` 和 `test_report.txt`
+- 不维护 `manifest.json` 和 `playtest-*` 会话目录
 
 ```bash
 # 确保 adb 设备已连接
@@ -240,7 +264,7 @@ GUI 版本基于 Wails 框架开发，提供完整图形界面，包含 5 个功
 | **设备管理** | ADB 设备连接/断开（支持 IP 连接），多设备 APK 安装 |
 | **启动时间测试** | 应用冷启动计时（毫秒精度），统计均值和标准差；支持强制停止、Kill All、回到首页 |
 | **生成语音** | 文本列表管理，批量 TTS 生成，实时进度（支持中途停止） |
-| **播放模式** | 播放音频 + logcat 录制 + 截图 + 视频录制 + 断言验证（支持中途停止） |
+| **播放模式** | 选择目标设备后执行播放测试，自动采集 logcat / 截图 / 录屏并输出独立会话目录（支持中途停止） |
 | **配置设置** | 语音引擎选择，模板可视化编辑，视频录制参数配置 |
 
 ```
@@ -252,7 +276,7 @@ tts-gui-windows-amd64/
 ├── models/                    # 语音模型
 ├── adb/                       # ADB 工具
 ├── ffmpeg/                    # 视频录制工具
-└── output/                    # 输出目录（wav/log/png/mp4）
+└── output/                    # 输出目录（wav、manifest、playtest-* 测试结果）
 ```
 
 ## Windows 安装包
@@ -330,9 +354,17 @@ adb 工具已内置在 `adb/` 目录，程序会自动使用。如仍有问题�
 
 检查 `text.txt` 文件编码是否为 UTF-8。
 
+### Q: 当前支持哪些平台？
+
+- Linux：支持 CLI 构建和运行
+- Windows：支持 GUI 打包和使用
+- macOS：当前不提供运行支持
+
 ### Q: 如何修改语音内容结构
 
-编辑 `config.json` 中的 `prefix_text`、`suffix_text1`、`suffix_text2` 字段。
+优先编辑 `config.json` 中的 `template` 数组。
+
+旧版 `prefix_text`、`suffix_text1`、`suffix_text2` 字段仍保留兼容，但新配置和 GUI 编辑都以 `template` 为准。
 
 ## License
 

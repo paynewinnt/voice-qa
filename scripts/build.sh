@@ -199,7 +199,7 @@ EOF
     ├── models/          # 离线语音模型 (已包含)
     ├── ffmpeg/          # 音频处理工具 (已包含)
     ├── adb/             # ADB工具 (已包含)
-    └── output/          # 输出目录 (wav/log/png)
+    └── output/          # 输出目录 (wav、manifest、playtest-* 测试结果)
 
     【注意】使用 Piper 离线语音时，首次运行需安装 VC++ 运行库:
     下载地址: https://aka.ms/vs/17/release/vc_redist.x64.exe
@@ -237,6 +237,7 @@ EOF
         - 播放已生成的语音
         - 同时记录 adb logcat 日志
         - 在结束前自动截图
+        - 结果会写入 output/playtest-* 会话目录
         - 需要先连接 adb 设备
 
     【方式3】命令行
@@ -316,6 +317,8 @@ EOF
     1. 播放语音文件
     2. 记录设备 logcat 日志
     3. 在语音结束前指定秒数截图
+    4. 可选录制设备屏幕视频
+    5. 基于 wav 对应原文做日志断言
 
     adb 工具已内置在 adb/ 目录，无需额外安装。
 
@@ -327,6 +330,12 @@ EOF
     2. 验证连接
        - 命令行进入本目录，执行: adb\adb.exe devices
        - 应显示已连接的设备
+
+    输出结果说明:
+       - output/*.wav                 生成的语音文件
+       - output/manifest.json         wav 到原文映射
+       - output/playtest-*/           单次播放测试结果目录
+       - output/playtest-*/test_report.txt  测试报告
 
 
 八、可用声音列表
