@@ -43,9 +43,9 @@ type Config struct {
 	ScreenshotBeforeEnd float64 `json:"screenshot_before_end"` // 结束前多少秒截图
 
 	// 视频录制配置
-	EnableVideoRecording   bool    `json:"enable_video_recording"`    // 是否启用视频录制
-	RecordingStartDelay    float64 `json:"recording_start_delay"`     // 音频开始后多少秒开始录制
-	RecordingEndBeforeEnd  float64 `json:"recording_end_before_end"`  // 音频结束前多少秒停止录制
+	EnableVideoRecording  bool    `json:"enable_video_recording"`   // 是否启用视频录制
+	RecordingStartDelay   float64 `json:"recording_start_delay"`    // 音频开始后多少秒开始录制
+	RecordingEndBeforeEnd float64 `json:"recording_end_before_end"` // 音频结束前多少秒停止录制
 
 	// 文件名配置
 	FileNameMaxLength int `json:"filename_max_length"` // 文件名最大字符数

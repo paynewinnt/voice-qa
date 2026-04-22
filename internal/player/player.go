@@ -66,8 +66,6 @@ func Play(filePath string) error {
 		return playWindows(filePath)
 	case "linux":
 		return playLinux(filePath)
-	case "darwin":
-		return playMac(filePath)
 	default:
 		return fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
@@ -135,11 +133,6 @@ func playLinuxAsync(filePath string) (*exec.Cmd, error) {
 	cmd := exec.Command("aplay", filePath)
 	err := cmd.Start()
 	return cmd, err
-}
-
-func playMac(filePath string) error {
-	cmd := exec.Command("afplay", filePath)
-	return cmd.Run()
 }
 
 // PlayWithCallback 播放音频，并在指定时间执行回调

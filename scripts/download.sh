@@ -28,15 +28,6 @@ if [ "$OS" = "linux" ]; then
         echo "不支持的架构: $ARCH"
         exit 1
     fi
-elif [ "$OS" = "darwin" ]; then
-    if [ "$ARCH" = "x86_64" ]; then
-        PIPER_ARCH="macos_x64"
-    elif [ "$ARCH" = "arm64" ]; then
-        PIPER_ARCH="macos_aarch64"
-    else
-        echo "不支持的架构: $ARCH"
-        exit 1
-    fi
 else
     echo "不支持的操作系统: $OS"
     exit 1

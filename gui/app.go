@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -25,13 +27,15 @@ const defaultModel = "zh_CN-huayan-medium.onnx"
 
 // App struct
 type App struct {
-	ctx         context.Context
-	cfg         *config.Config
-	ttsEngine   tts.Engine // TTS 引擎接口
-	generateCmd *exec.Cmd  // 当前生成进程
-	playCmd     *exec.Cmd  // 当前播放进程
-	playDir     string     // 播放目录（默认为 output）
-	cmdMu       sync.Mutex // 保护 generateCmd 和 playCmd 的互斥锁
+	ctx              context.Context
+	cfg              *config.Config
+	ttsEngine        tts.Engine // TTS 引擎接口
+	generateCmd      *exec.Cmd  // 当前生成进程
+	playCmd          *exec.Cmd  // 当前播放进程
+	playDir          string     // 播放目录（默认为 output）
+	playDevice       string     // 播放模式目标设备序列号
+	activePlayDevice string
+	cmdMu            sync.Mutex // 保护 generateCmd 和 playCmd 的互斥锁
 }
 
 // NewApp 创建新的 App 实例
@@ -54,7 +58,7 @@ func (a *App) startup(ctx context.Context) {
 	a.initTTSEngine()
 }
 
-// initTTSEngine 初始化 TTS 引擎
+// shutdown 在应用关闭时清理后台任务和播放资源
 func (a *App) shutdown(ctx context.Context) {
 	a.cmdMu.Lock()
 	genCancel := generateCancel
@@ -69,7 +73,6 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 
 	player.StopAllPlayback()
-	adb.Shutdown()
 }
 
 func (a *App) initTTSEngine() {
@@ -119,10 +122,7 @@ func (a *App) SaveConfig(cfg *config.Config) error {
 		}
 	}
 
-	a.cfg = cfg
-
-	// 重新初始化 TTS 引擎（如果声音配置改变了）
-	a.initTTSEngine()
+	nextCfg := cloneConfig(cfg)
 
 	// 保存到文件
 	configPath := config.FindConfigFile()
@@ -134,7 +134,25 @@ func (a *App) SaveConfig(cfg *config.Config) error {
 		}
 	}
 
-	return cfg.Save(configPath)
+	if err := nextCfg.Save(configPath); err != nil {
+		return err
+	}
+
+	a.cfg = nextCfg
+	a.initTTSEngine()
+	return nil
+}
+
+func cloneConfig(cfg *config.Config) *config.Config {
+	if cfg == nil {
+		return config.DefaultConfig()
+	}
+
+	cloned := *cfg
+	if cfg.Template != nil {
+		cloned.Template = append([]config.TemplateSegment(nil), cfg.Template...)
+	}
+	return &cloned
 }
 
 // GetPlayDir 获取当前播放目录
@@ -148,6 +166,20 @@ func (a *App) GetPlayDir() string {
 // SetPlayDir 设置播放目录
 func (a *App) SetPlayDir(dir string) {
 	a.playDir = dir
+}
+
+// GetPlayDevice 获取当前播放目标设备
+func (a *App) GetPlayDevice() string {
+	a.cmdMu.Lock()
+	defer a.cmdMu.Unlock()
+	return a.playDevice
+}
+
+// SetPlayDevice 设置当前播放目标设备
+func (a *App) SetPlayDevice(serial string) {
+	a.cmdMu.Lock()
+	a.playDevice = strings.TrimSpace(serial)
+	a.cmdMu.Unlock()
 }
 
 // SelectPlayDir 选择播放目录
@@ -171,11 +203,7 @@ func (a *App) GetSubDirs(baseDir string) ([]string, error) {
 	}
 
 	// 获取绝对路径
-	if !filepath.IsAbs(baseDir) {
-		if exePath, err := os.Executable(); err == nil {
-			baseDir = filepath.Join(filepath.Dir(exePath), baseDir)
-		}
-	}
+	baseDir = resolveRelativeToExe(baseDir)
 
 	var dirs []string
 
@@ -202,11 +230,9 @@ func (a *App) GetTextList() ([]string, error) {
 
 	// 查找文件
 	if !filepath.IsAbs(textFile) {
-		if exePath, err := os.Executable(); err == nil {
-			absPath := filepath.Join(filepath.Dir(exePath), textFile)
-			if _, err := os.Stat(absPath); err == nil {
-				textFile = absPath
-			}
+		absPath := resolveRelativeToExe(textFile)
+		if _, err := os.Stat(absPath); err == nil {
+			textFile = absPath
 		}
 	}
 
@@ -238,11 +264,7 @@ func (a *App) SaveTextList(texts []string) error {
 	}
 
 	// 查找文件路径
-	if !filepath.IsAbs(textFile) {
-		if exePath, err := os.Executable(); err == nil {
-			textFile = filepath.Join(filepath.Dir(exePath), textFile)
-		}
-	}
+	textFile = resolveRelativeToExe(textFile)
 
 	content := strings.Join(texts, "\n")
 	return os.WriteFile(textFile, []byte(content), 0644)
@@ -257,17 +279,7 @@ type GenerateResult struct {
 
 // GenerateSingle 生成单条语音
 func (a *App) GenerateSingle(text string, simple bool) GenerateResult {
-	outputDir := a.cfg.OutputDir
-	if outputDir == "" {
-		outputDir = "output"
-	}
-
-	// 获取绝对路径
-	if !filepath.IsAbs(outputDir) {
-		if exePath, err := os.Executable(); err == nil {
-			outputDir = filepath.Join(filepath.Dir(exePath), outputDir)
-		}
-	}
+	outputDir := a.resolvedOutputDir()
 
 	// 创建输出目录
 	os.MkdirAll(outputDir, 0755)
@@ -287,24 +299,27 @@ func (a *App) GenerateSingle(text string, simple bool) GenerateResult {
 		return GenerateResult{Success: false, Message: err.Error()}
 	}
 
+	if err := upsertPlayManifestEntry(outputDir, playManifestEntry{
+		Index:   0,
+		Text:    strings.TrimSpace(text),
+		WavFile: filepath.Base(outputFile),
+	}); err != nil {
+		return GenerateResult{
+			Success: false,
+			Message: fmt.Sprintf("生成成功，但写入 manifest 失败: %v", err),
+			File:    outputFile,
+		}
+	}
+
 	return GenerateResult{Success: true, Message: "生成成功", File: outputFile}
 }
 
 // GenerateBatch 批量生成语音
 func (a *App) GenerateBatch(texts []string, simple bool) []GenerateResult {
 	var results []GenerateResult
+	manifestEntries := make([]playManifestEntry, 0, len(texts))
 
-	outputDir := a.cfg.OutputDir
-	if outputDir == "" {
-		outputDir = "output"
-	}
-
-	// 获取绝对路径
-	if !filepath.IsAbs(outputDir) {
-		if exePath, err := os.Executable(); err == nil {
-			outputDir = filepath.Join(filepath.Dir(exePath), outputDir)
-		}
-	}
+	outputDir := a.resolvedOutputDir()
 
 	// 创建输出目录
 	os.MkdirAll(outputDir, 0755)
@@ -335,8 +350,17 @@ func (a *App) GenerateBatch(texts []string, simple bool) []GenerateResult {
 		if err != nil {
 			results = append(results, GenerateResult{Success: false, Message: err.Error(), File: outputFile})
 		} else {
+			manifestEntries = append(manifestEntries, playManifestEntry{
+				Index:   i + 1,
+				Text:    text,
+				WavFile: filepath.Base(outputFile),
+			})
 			results = append(results, GenerateResult{Success: true, Message: "生成成功", File: outputFile})
 		}
+	}
+
+	if len(manifestEntries) > 0 {
+		_ = writePlayManifest(outputDir, manifestEntries)
 	}
 
 	return results
@@ -487,11 +511,7 @@ func (a *App) SelectDirectory(title string) (string, error) {
 
 // OpenDirectory 打开目录
 func (a *App) OpenDirectory(path string) error {
-	if !filepath.IsAbs(path) {
-		if exePath, err := os.Executable(); err == nil {
-			path = filepath.Join(filepath.Dir(exePath), path)
-		}
-	}
+	path = resolveRelativeToExe(path)
 
 	// 确保目录存在
 	os.MkdirAll(path, 0755)
@@ -515,11 +535,7 @@ func (a *App) OpenTextFile() error {
 	}
 
 	// 获取绝对路径
-	if !filepath.IsAbs(textFile) {
-		if exePath, err := os.Executable(); err == nil {
-			textFile = filepath.Join(filepath.Dir(exePath), textFile)
-		}
-	}
+	textFile = resolveRelativeToExe(textFile)
 
 	// 如果文件不存在，创建空文件
 	if _, err := os.Stat(textFile); os.IsNotExist(err) {
@@ -539,22 +555,8 @@ func (a *App) OpenTextFile() error {
 
 // OpenTestReport 打开测试报告文件
 func (a *App) OpenTestReport() error {
-	outputDir := a.cfg.OutputDir
-	if outputDir == "" {
-		outputDir = "output"
-	}
-
-	// 获取绝对路径
-	if !filepath.IsAbs(outputDir) {
-		if exePath, err := os.Executable(); err == nil {
-			outputDir = filepath.Join(filepath.Dir(exePath), outputDir)
-		}
-	}
-
-	reportFile := filepath.Join(outputDir, "test_report.txt")
-
-	// 检查文件是否存在
-	if _, err := os.Stat(reportFile); os.IsNotExist(err) {
+	reportFile := latestPlayReportForDir(a.resolvedPlayDir())
+	if reportFile == "" {
 		return fmt.Errorf("测试报告不存在，请先执行播放模式")
 	}
 
@@ -740,12 +742,12 @@ func isPunctuation(r rune) bool {
 	return strings.ContainsRune(punctuations, r)
 }
 
-// RunGenerate 运行批量生成语音（在后台执行，进度推送到前端）
+// legacyRunGenerate 保留旧版入口，转发到当前 GUI 内置批量生成流程。
 func (a *App) legacyRunGenerate() {
 	go a.runGenerateInBackground()
 }
 
-// runGenerateInBackground 后台执行生成
+// legacyRunGenerateInBackground 保留旧版后台生成实现，供兼容路径使用。
 func (a *App) legacyRunGenerateInBackground() {
 	// 获取 exe 所在目录
 	exePath, err := os.Executable()
@@ -854,12 +856,12 @@ func (a *App) legacyRunGenerateInBackground() {
 	}
 }
 
-// RunPlay 运行播放模式（在后台执行，进度推送到前端）
+// legacyRunPlay 保留旧版入口，转发到当前 GUI 内置播放流程。
 func (a *App) legacyRunPlay() {
 	go a.runPlayInBackground()
 }
 
-// runPlayInBackground 后台执行播放
+// legacyRunPlayInBackground 保留旧版后台播放实现，供兼容路径使用。
 func (a *App) legacyRunPlayInBackground() {
 	// 获取 exe 所在目录
 	exePath, err := os.Executable()
@@ -972,7 +974,7 @@ func (a *App) legacyRunPlayInBackground() {
 	}
 }
 
-// StopPlay 停止播放
+// legacyStopPlay 保留旧版停止播放实现，供兼容路径使用。
 func (a *App) legacyStopPlay() error {
 	a.cmdMu.Lock()
 	cmd := a.playCmd
@@ -1154,7 +1156,7 @@ func (a *App) PerfLaunchActivity(serial, component string) PerfLaunchResult {
 	}
 }
 
-// StopGenerate 停止生成
+// legacyStopGenerate 保留旧版停止生成实现，供兼容路径使用。
 func (a *App) legacyStopGenerate() error {
 	a.cmdMu.Lock()
 	cmd := a.generateCmd
@@ -1241,6 +1243,7 @@ func (a *App) beginPlayTask(cancel context.CancelFunc) bool {
 func (a *App) finishPlayTask() {
 	a.cmdMu.Lock()
 	playCancel = nil
+	a.activePlayDevice = ""
 	a.cmdMu.Unlock()
 }
 
@@ -1269,6 +1272,179 @@ func (a *App) resolvedPlayDir() string {
 	return a.resolvedOutputDir()
 }
 
+func (a *App) resolvePlayDevice() (string, error) {
+	a.cmdMu.Lock()
+	serial := strings.TrimSpace(a.playDevice)
+	a.cmdMu.Unlock()
+	if serial != "" {
+		return serial, nil
+	}
+
+	devices, err := a.GetConnectedDevices()
+	if err != nil {
+		return "", err
+	}
+
+	switch len(devices) {
+	case 0:
+		return "", fmt.Errorf("未检测到可用设备")
+	case 1:
+		a.SetPlayDevice(devices[0])
+		return devices[0], nil
+	default:
+		return "", fmt.Errorf("检测到多台设备，请先选择目标设备")
+	}
+}
+
+type playManifestEntry struct {
+	Index   int    `json:"index"`
+	Text    string `json:"text"`
+	WavFile string `json:"wav_file"`
+}
+
+type playManifest struct {
+	GeneratedAt string              `json:"generated_at"`
+	Entries     []playManifestEntry `json:"entries"`
+}
+
+func writePlayManifest(outputDir string, entries []playManifestEntry) error {
+	data, err := json.MarshalIndent(playManifest{
+		GeneratedAt: time.Now().Format(time.RFC3339),
+		Entries:     entries,
+	}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(outputDir, "manifest.json"), data, 0644)
+}
+
+func readPlayManifest(wavDir string) (*playManifest, error) {
+	data, err := os.ReadFile(filepath.Join(wavDir, "manifest.json"))
+	if err != nil {
+		return nil, err
+	}
+
+	var manifest playManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, err
+	}
+	return &manifest, nil
+}
+
+func loadPlayManifest(wavDir string) map[string]string {
+	manifest, err := readPlayManifest(wavDir)
+	if err != nil || manifest == nil {
+		return nil
+	}
+
+	lookup := make(map[string]string, len(manifest.Entries))
+	for _, entry := range manifest.Entries {
+		if strings.TrimSpace(entry.WavFile) == "" || strings.TrimSpace(entry.Text) == "" {
+			continue
+		}
+		lookup[filepath.Join(wavDir, entry.WavFile)] = entry.Text
+	}
+	return lookup
+}
+
+func upsertPlayManifestEntry(outputDir string, entry playManifestEntry) error {
+	manifest, err := readPlayManifest(outputDir)
+	if err != nil || manifest == nil {
+		manifest = &playManifest{}
+	}
+
+	replaced := false
+	for i := range manifest.Entries {
+		if manifest.Entries[i].WavFile == entry.WavFile {
+			manifest.Entries[i] = entry
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		manifest.Entries = append(manifest.Entries, entry)
+	}
+	return writePlayManifest(outputDir, manifest.Entries)
+}
+
+func createPlaySessionDir(playDir string) (string, string, error) {
+	sessionDir := filepath.Join(playDir, fmt.Sprintf("playtest-%s-%d", time.Now().Format("20060102-150405"), time.Now().UnixNano()))
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		return "", "", err
+	}
+	return sessionDir, filepath.Join(sessionDir, "test_report.txt"), nil
+}
+
+func latestPlayReportForDir(playDir string) string {
+	entries, err := os.ReadDir(playDir)
+	if err == nil {
+		var latestPath string
+		var latestTime time.Time
+		for _, entry := range entries {
+			if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "playtest-") {
+				continue
+			}
+			reportPath := filepath.Join(playDir, entry.Name(), "test_report.txt")
+			info, err := os.Stat(reportPath)
+			if err != nil {
+				continue
+			}
+			if latestPath == "" || info.ModTime().After(latestTime) {
+				latestPath = reportPath
+				latestTime = info.ModTime()
+			}
+		}
+		if latestPath != "" {
+			return latestPath
+		}
+	}
+
+	legacyReport := filepath.Join(playDir, "test_report.txt")
+	if _, err := os.Stat(legacyReport); err == nil {
+		return legacyReport
+	}
+	return ""
+}
+
+func buildPlayPlan(texts []string, wavDir string, maxLen int) ([]string, map[string]string) {
+	if manifest, err := readPlayManifest(wavDir); err == nil && manifest != nil && len(manifest.Entries) > 0 {
+		wavFiles := make([]string, 0, len(manifest.Entries))
+		lookup := make(map[string]string, len(manifest.Entries))
+		for _, entry := range manifest.Entries {
+			if strings.TrimSpace(entry.WavFile) == "" {
+				continue
+			}
+			wavFile := filepath.Join(wavDir, entry.WavFile)
+			if _, err := os.Stat(wavFile); err != nil {
+				continue
+			}
+			wavFiles = append(wavFiles, wavFile)
+			if strings.TrimSpace(entry.Text) != "" {
+				lookup[wavFile] = entry.Text
+			}
+		}
+		if len(wavFiles) > 0 {
+			return wavFiles, lookup
+		}
+	}
+
+	lookup := buildPlayTextLookup(texts, wavDir, maxLen)
+	entries, err := os.ReadDir(wavDir)
+	if err != nil {
+		return nil, lookup
+	}
+
+	var wavFiles []string
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".wav") {
+			continue
+		}
+		wavFiles = append(wavFiles, filepath.Join(wavDir, entry.Name()))
+	}
+	sort.Strings(wavFiles)
+	return wavFiles, lookup
+}
+
 type playTestResult struct {
 	Text       string
 	LogFile    string
@@ -1279,7 +1455,10 @@ type playTestResult struct {
 }
 
 func buildPlayTextLookup(texts []string, wavDir string, maxLen int) map[string]string {
-	lookup := make(map[string]string)
+	lookup := loadPlayManifest(wavDir)
+	if lookup == nil {
+		lookup = make(map[string]string)
+	}
 	for i, line := range texts {
 		line = strings.TrimSpace(strings.TrimPrefix(line, "\xef\xbb\xbf"))
 		if line == "" {
@@ -1287,7 +1466,9 @@ func buildPlayTextLookup(texts []string, wavDir string, maxLen int) map[string]s
 		}
 		safeName := sanitizeFileName(truncate(line, maxLen))
 		wavPath := filepath.Join(wavDir, fmt.Sprintf("%04d%s.wav", i+1, safeName))
-		lookup[wavPath] = line
+		if _, exists := lookup[wavPath]; !exists {
+			lookup[wavPath] = line
+		}
 	}
 	return lookup
 }
@@ -1327,6 +1508,32 @@ func assertLogContent(logFile, expectedQuery string) (bool, string) {
 	return false, "日志中未找到 nlpResult 相关内容"
 }
 
+func trimLogBeforeMarker(logFile, marker string) error {
+	if strings.TrimSpace(marker) == "" {
+		return nil
+	}
+
+	data, err := os.ReadFile(logFile)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.Contains(line, marker) {
+			start = i + 1
+			break
+		}
+	}
+	if start == -1 {
+		return fmt.Errorf("日志中未找到起始标记")
+	}
+
+	trimmed := strings.Join(lines[start:], "\n")
+	return os.WriteFile(logFile, []byte(trimmed), 0644)
+}
+
 func savePlayTestReport(reportFile string, results []playTestResult, passCount, failCount int, complete bool) {
 	var sb strings.Builder
 	sb.WriteString("================== 测试执行报告 ==================\n")
@@ -1355,18 +1562,32 @@ func savePlayTestReport(reportFile string, results []playTestResult, passCount, 
 	_ = os.WriteFile(reportFile, []byte(sb.String()), 0644)
 }
 
-func (a *App) playWithArtifacts(ctx context.Context, wavFile, logFile, pngFile string) error {
+func (a *App) playWithArtifacts(ctx context.Context, serial, wavFile, logFile, pngFile, mp4File string) error {
 	duration, err := player.GetWAVDuration(wavFile)
 	if err != nil {
 		return fmt.Errorf("获取音频时长失败: %w", err)
 	}
 
-	logRecorder, err := adb.StartLogcat(logFile)
+	logRecorder, err := adb.StartLogcatForDevice(serial, logFile)
 	if err != nil {
 		return fmt.Errorf("启动 logcat 失败: %w", err)
 	}
-	stopLogcat := func() {
-		_ = logRecorder.Stop()
+
+	logMarker := fmt.Sprintf("voice-qa-play-%d", time.Now().UnixNano())
+	trimLog := func() error { return nil }
+	if err := adb.WriteLogMarker(serial, "voice-qa", logMarker); err != nil {
+		a.emitPlayOutput(fmt.Sprintf("日志标记写入失败，将保留完整日志: %v", err))
+	} else {
+		trimLog = func() error {
+			return trimLogBeforeMarker(logFile, logMarker)
+		}
+	}
+
+	stopLogcat := func() error {
+		if err := logRecorder.Stop(); err != nil {
+			return err
+		}
+		return trimLog()
 	}
 
 	time.Sleep(500 * time.Millisecond)
@@ -1385,7 +1606,7 @@ func (a *App) playWithArtifacts(ctx context.Context, wavFile, logFile, pngFile s
 		case <-time.After(time.Duration(screenshotTime * float64(time.Second))):
 		}
 
-		if err := adb.Screenshot(pngFile); err != nil {
+		if err := adb.ScreenshotForDevice(serial, pngFile); err != nil {
 			a.emitPlayError(fmt.Sprintf("截图失败: %v", err))
 			return
 		}
@@ -1409,8 +1630,7 @@ func (a *App) playWithArtifacts(ctx context.Context, wavFile, logFile, pngFile s
 			case <-time.After(time.Duration(a.cfg.RecordingStartDelay * float64(time.Second))):
 			}
 
-			mp4File := strings.TrimSuffix(wavFile, ".wav") + ".mp4"
-			recorder, err := adb.StartVideoRecording(mp4File, int(recordingDuration)+5)
+			recorder, err := adb.StartVideoRecordingForDevice(serial, mp4File, int(recordingDuration)+5)
 			if err != nil {
 				a.emitPlayError(fmt.Sprintf("启动录制失败: %v", err))
 				return
@@ -1434,7 +1654,9 @@ func (a *App) playWithArtifacts(ctx context.Context, wavFile, logFile, pngFile s
 
 	audioCmd, err := player.PlayAsync(wavFile)
 	if err != nil {
-		stopLogcat()
+		if stopErr := stopLogcat(); stopErr != nil {
+			return fmt.Errorf("播放失败: %w；停止日志采集失败: %v", err, stopErr)
+		}
 		return fmt.Errorf("播放失败: %w", err)
 	}
 
@@ -1446,16 +1668,23 @@ func (a *App) playWithArtifacts(ctx context.Context, wavFile, logFile, pngFile s
 	select {
 	case err = <-waitAudio:
 		if err != nil {
-			stopLogcat()
+			stopErr := stopLogcat()
 			<-screenshotDone
 			<-videoDone
+			if stopErr != nil {
+				return fmt.Errorf("播放失败: %w；停止日志采集失败: %v", err, stopErr)
+			}
 			return fmt.Errorf("播放失败: %w", err)
 		}
 	case <-ctx.Done():
 		player.StopAllPlayback()
-		adb.StopAllAdbProcesses()
+		adb.StopAllAdbProcessesForDevice(serial)
 		<-waitAudio
-		stopLogcat()
+		if stopErr := stopLogcat(); stopErr != nil {
+			<-screenshotDone
+			<-videoDone
+			return fmt.Errorf("停止日志采集失败: %w", stopErr)
+		}
 		<-screenshotDone
 		<-videoDone
 		return ctx.Err()
@@ -1466,12 +1695,16 @@ func (a *App) playWithArtifacts(ctx context.Context, wavFile, logFile, pngFile s
 
 	select {
 	case <-ctx.Done():
-		stopLogcat()
+		if stopErr := stopLogcat(); stopErr != nil {
+			return fmt.Errorf("停止日志采集失败: %w", stopErr)
+		}
 		return ctx.Err()
 	case <-time.After(2 * time.Second):
 	}
 
-	stopLogcat()
+	if err := stopLogcat(); err != nil {
+		return fmt.Errorf("停止日志采集失败: %w", err)
+	}
 	return nil
 }
 
@@ -1513,6 +1746,7 @@ func (a *App) runGenerateInBackground() {
 
 	successCount := 0
 	failCount := 0
+	manifestEntries := make([]playManifestEntry, 0, len(texts))
 
 	for i, text := range texts {
 		if ctx.Err() != nil {
@@ -1536,12 +1770,23 @@ func (a *App) runGenerateInBackground() {
 		}
 
 		successCount++
+		manifestEntries = append(manifestEntries, playManifestEntry{
+			Index:   i + 1,
+			Text:    text,
+			WavFile: filepath.Base(outputFile),
+		})
 		a.emitGenerateOutput(fmt.Sprintf("生成完成 -> %s", filepath.Base(outputFile)))
 	}
 
 	if ctx.Err() != nil {
 		a.emitGenerateDone("已停止生成")
 		return
+	}
+
+	if len(manifestEntries) > 0 {
+		if err := writePlayManifest(outputDir, manifestEntries); err != nil {
+			a.emitGenerateError(fmt.Sprintf("写入 manifest 失败: %v", err))
+		}
 	}
 
 	a.emitGenerateDone(fmt.Sprintf("批量生成完成，成功 %d 条，失败 %d 条", successCount, failCount))
@@ -1561,32 +1806,35 @@ func (a *App) runPlayInBackground() {
 	}
 	defer a.finishPlayTask()
 
-	wavDir := a.resolvedPlayDir()
-	entries, err := os.ReadDir(wavDir)
+	serial, err := a.resolvePlayDevice()
 	if err != nil {
-		a.emitPlayError(fmt.Sprintf("无法读取播放目录: %v", err))
+		a.emitPlayError(err.Error())
+		a.emitPlayDone("播放未启动")
+		return
+	}
+	a.cmdMu.Lock()
+	a.activePlayDevice = serial
+	a.cmdMu.Unlock()
+
+	wavDir := a.resolvedPlayDir()
+	texts, _ := a.GetTextList()
+	wavFiles, textLookup := buildPlayPlan(texts, wavDir, a.cfg.FileNameMaxLength)
+	if len(wavFiles) == 0 {
+		a.emitPlayError("播放目录中没有可播放的 wav 文件")
+		a.emitPlayDone("播放未启动")
+		return
+	}
+	sessionDir, reportFile, err := createPlaySessionDir(wavDir)
+	if err != nil {
+		a.emitPlayError(fmt.Sprintf("创建播放结果目录失败: %v", err))
 		a.emitPlayDone("播放失败")
 		return
 	}
 
-	var wavFiles []string
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".wav") {
-			wavFiles = append(wavFiles, filepath.Join(wavDir, entry.Name()))
-		}
-	}
-	if len(wavFiles) == 0 {
-		a.emitPlayError("播放目录中没有 wav 文件")
-		a.emitPlayDone("播放未启动")
-		return
-	}
-
-	texts, _ := a.GetTextList()
-	textLookup := buildPlayTextLookup(texts, wavDir, a.cfg.FileNameMaxLength)
-	reportFile := filepath.Join(wavDir, "test_report.txt")
-
 	a.emitTaskEvent("play-output", "start", "开始播放模式...")
+	a.emitPlayOutput(fmt.Sprintf("目标设备: %s", serial))
 	a.emitPlayOutput(fmt.Sprintf("共 %d 个 wav 文件，目录: %s", len(wavFiles), wavDir))
+	a.emitPlayOutput(fmt.Sprintf("结果目录: %s", sessionDir))
 
 	results := make([]playTestResult, 0, len(wavFiles))
 	passCount := 0
@@ -1600,8 +1848,9 @@ func (a *App) runPlayInBackground() {
 		}
 
 		baseName := strings.TrimSuffix(filepath.Base(wavFile), ".wav")
-		logFile := filepath.Join(wavDir, baseName+".log")
-		pngFile := filepath.Join(wavDir, baseName+".png")
+		logFile := filepath.Join(sessionDir, baseName+".log")
+		pngFile := filepath.Join(sessionDir, baseName+".png")
+		mp4File := filepath.Join(sessionDir, baseName+".mp4")
 
 		originalText := textLookup[wavFile]
 		if originalText == "" {
@@ -1616,7 +1865,7 @@ func (a *App) runPlayInBackground() {
 		}
 
 		a.emitPlayOutput(fmt.Sprintf("[%d/%d] %s", i+1, len(wavFiles), truncate(originalText, 30)))
-		err := a.playWithArtifacts(ctx, wavFile, logFile, pngFile)
+		err := a.playWithArtifacts(ctx, serial, wavFile, logFile, pngFile, mp4File)
 		if err != nil {
 			if ctx.Err() != nil {
 				savePlayTestReport(reportFile, results, passCount, failCount, false)
@@ -1654,13 +1903,14 @@ func (a *App) runPlayInBackground() {
 func (a *App) StopPlay() error {
 	a.cmdMu.Lock()
 	cancel := playCancel
+	serial := strings.TrimSpace(a.activePlayDevice)
 	a.cmdMu.Unlock()
 
 	if cancel != nil {
 		a.emitPlayOutput("正在停止，等待资源清理...")
 		cancel()
 		player.StopAllPlayback()
-		adb.StopAllAdbProcesses()
+		adb.StopAllAdbProcessesForDevice(serial)
 	}
 	return nil
 }

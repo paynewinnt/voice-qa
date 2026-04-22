@@ -101,6 +101,14 @@ func Command(args ...string) *exec.Cmd {
 	return exec.Command(findAdb(), args...)
 }
 
+func withDeviceArgs(serial string, args ...string) []string {
+	serial = strings.TrimSpace(serial)
+	if serial == "" {
+		return args
+	}
+	return append([]string{"-s", serial}, args...)
+}
+
 // LogcatRecorder logcat 记录器
 type LogcatRecorder struct {
 	cmd     *exec.Cmd
@@ -113,20 +121,21 @@ type LogcatRecorder struct {
 
 // StartLogcat 开始记录 logcat 到文件
 func StartLogcat(outputPath string) (*LogcatRecorder, error) {
+	return StartLogcatForDevice("", outputPath)
+}
+
+// StartLogcatForDevice 开始记录指定设备的 logcat 到文件
+func StartLogcatForDevice(serial, outputPath string) (*LogcatRecorder, error) {
 	// 创建输出文件
 	file, err := os.Create(outputPath)
 	if err != nil {
 		return nil, fmt.Errorf("创建日志文件失败: %w", err)
 	}
 
-	// 先清除所有 logcat 缓存
 	adb := findAdb()
-	clearCmd := exec.Command(adb, "logcat", "-b", "all", "-c")
-	hideWindow(clearCmd)
-	clearCmd.Run()
 
 	// 启动 logcat（读取所有缓冲区：main, system, radio, events, crash）
-	cmd := exec.Command(adb, "logcat", "-b", "all")
+	cmd := exec.Command(adb, withDeviceArgs(serial, "logcat", "-b", "all")...)
 	hideWindow(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -210,6 +219,11 @@ var adbMutex sync.Mutex
 
 // Screenshot 截图并保存到本地（使用 screencap，速度快）
 func Screenshot(outputPath string) error {
+	return ScreenshotForDevice("", outputPath)
+}
+
+// ScreenshotForDevice 截图并保存到本地（使用 screencap，速度快）
+func ScreenshotForDevice(serial, outputPath string) error {
 	var lastErr error
 
 	// 重试最多3次
@@ -218,7 +232,7 @@ func Screenshot(outputPath string) error {
 			time.Sleep(500 * time.Millisecond)
 		}
 
-		err := doScreenshot(outputPath)
+		err := doScreenshotForDevice(serial, outputPath)
 		if err == nil {
 			return nil
 		}
@@ -229,7 +243,7 @@ func Screenshot(outputPath string) error {
 }
 
 // doScreenshot 使用 screencap 快速截图
-func doScreenshot(outputPath string) error {
+func doScreenshotForDevice(serial, outputPath string) error {
 	adbMutex.Lock()
 	defer adbMutex.Unlock()
 
@@ -239,7 +253,7 @@ func doScreenshot(outputPath string) error {
 	devicePngPath := "/sdcard/screenshot_tmp.png"
 
 	// 使用 screencap 截图（比 screenrecord 快得多）
-	capCmd := exec.Command(adb, "shell", "screencap", "-p", devicePngPath)
+	capCmd := exec.Command(adb, withDeviceArgs(serial, "shell", "screencap", "-p", devicePngPath)...)
 	hideWindow(capCmd)
 	if output, err := capCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("screencap 失败: %w, 输出: %s", err, string(output))
@@ -247,7 +261,7 @@ func doScreenshot(outputPath string) error {
 
 	// 先拉取到英文临时路径，规避 adb 在 Windows 上处理非 ASCII 路径的问题
 	tmpPull := filepath.Join(filepath.Dir(outputPath), fmt.Sprintf("adb_pull_%d.png", time.Now().UnixNano()))
-	pullCmd := exec.Command(adb, "pull", devicePngPath, tmpPull)
+	pullCmd := exec.Command(adb, withDeviceArgs(serial, "pull", devicePngPath, tmpPull)...)
 	hideWindow(pullCmd)
 	if output, err := pullCmd.CombinedOutput(); err != nil {
 		os.Remove(tmpPull)
@@ -261,7 +275,7 @@ func doScreenshot(outputPath string) error {
 	}
 
 	// 删除设备上的临时截图
-	rmCmd := exec.Command(adb, "shell", "rm", "-f", devicePngPath)
+	rmCmd := exec.Command(adb, withDeviceArgs(serial, "shell", "rm", "-f", devicePngPath)...)
 	hideWindow(rmCmd)
 	rmCmd.Run()
 
@@ -314,9 +328,29 @@ func Connect(ip string) (string, error) {
 	return "", fmt.Errorf("连接失败: %s", result)
 }
 
+// WriteLogMarker 写入一条日志标记，用于后续从完整日志中裁剪本次播放窗口。
+func WriteLogMarker(serial, tag, message string) error {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		tag = "voice-qa"
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return fmt.Errorf("日志标记内容不能为空")
+	}
+
+	cmd := exec.Command(findAdb(), withDeviceArgs(serial, "shell", "log", "-t", tag, message)...)
+	hideWindow(cmd)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("写入日志标记失败: %w, 输出: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
 // VideoRecorder 视频录制器
 type VideoRecorder struct {
 	cmd         *exec.Cmd
+	serial      string
 	devicePath  string
 	localPath   string
 	mu          sync.Mutex
@@ -326,8 +360,12 @@ type VideoRecorder struct {
 
 // getAndroidVersion 获取 Android 版本号
 func getAndroidVersion() int {
+	return getAndroidVersionForDevice("")
+}
+
+func getAndroidVersionForDevice(serial string) int {
 	adb := findAdb()
-	cmd := exec.Command(adb, "shell", "getprop", "ro.build.version.sdk")
+	cmd := exec.Command(adb, withDeviceArgs(serial, "shell", "getprop", "ro.build.version.sdk")...)
 	hideWindow(cmd)
 	output, err := cmd.Output()
 	if err != nil {
@@ -343,6 +381,11 @@ func getAndroidVersion() int {
 // outputPath: 本地保存路径
 // maxDuration: 最大录制时长（秒），0 表示使用默认值 180 秒
 func StartVideoRecording(outputPath string, maxDuration int) (*VideoRecorder, error) {
+	return StartVideoRecordingForDevice("", outputPath, maxDuration)
+}
+
+// StartVideoRecordingForDevice 开始录制指定设备的屏幕视频
+func StartVideoRecordingForDevice(serial, outputPath string, maxDuration int) (*VideoRecorder, error) {
 	adbMutex.Lock()
 	defer adbMutex.Unlock()
 
@@ -356,7 +399,7 @@ func StartVideoRecording(outputPath string, maxDuration int) (*VideoRecorder, er
 	devicePath := "/sdcard/recording_tmp.mp4"
 
 	// 先删除可能存在的旧文件（设备和本地）
-	rmCmd := exec.Command(adb, "shell", "rm", "-f", devicePath)
+	rmCmd := exec.Command(adb, withDeviceArgs(serial, "shell", "rm", "-f", devicePath)...)
 	hideWindow(rmCmd)
 	rmCmd.Run()
 
@@ -368,7 +411,7 @@ func StartVideoRecording(outputPath string, maxDuration int) (*VideoRecorder, er
 	args := []string{"shell", "screenrecord", "--time-limit", fmt.Sprintf("%d", maxDuration)}
 
 	// Android 10+ (SDK 29+) 支持录制内部音频
-	sdkVersion := getAndroidVersion()
+	sdkVersion := getAndroidVersionForDevice(serial)
 	if sdkVersion >= 29 {
 		// Android 10+ 使用 --bugreport 可以录制内部音频
 		args = append(args, "--bugreport")
@@ -377,7 +420,7 @@ func StartVideoRecording(outputPath string, maxDuration int) (*VideoRecorder, er
 	args = append(args, devicePath)
 
 	// 启动 screenrecord（在后台运行）
-	cmd := exec.Command(adb, args...)
+	cmd := exec.Command(adb, withDeviceArgs(serial, args...)...)
 	hideWindow(cmd)
 
 	if err := cmd.Start(); err != nil {
@@ -386,6 +429,7 @@ func StartVideoRecording(outputPath string, maxDuration int) (*VideoRecorder, er
 
 	recorder := &VideoRecorder{
 		cmd:         cmd,
+		serial:      serial,
 		devicePath:  devicePath,
 		localPath:   outputPath,
 		maxDuration: maxDuration,
@@ -410,7 +454,7 @@ func (r *VideoRecorder) Stop() error {
 	// screenrecord 会在收到信号后正常结束并保存文件
 	if r.cmd.Process != nil {
 		// 通过 adb shell 发送 SIGINT 信号
-		killCmd := exec.Command(adb, "shell", "pkill", "-SIGINT", "screenrecord")
+		killCmd := exec.Command(adb, withDeviceArgs(r.serial, "shell", "pkill", "-SIGINT", "screenrecord")...)
 		hideWindow(killCmd)
 		killCmd.Run()
 
@@ -424,7 +468,7 @@ func (r *VideoRecorder) Stop() error {
 	// 使用临时文件路径拉取，完成后再重命名
 	// 这样可以确保最终文件只在完全拉取后才出现
 	tmpPath := r.localPath + ".tmp"
-	pullCmd := exec.Command(adb, "pull", r.devicePath, tmpPath)
+	pullCmd := exec.Command(adb, withDeviceArgs(r.serial, "pull", r.devicePath, tmpPath)...)
 	hideWindow(pullCmd)
 	if output, err := pullCmd.CombinedOutput(); err != nil {
 		os.Remove(tmpPath)
@@ -438,7 +482,7 @@ func (r *VideoRecorder) Stop() error {
 	}
 
 	// 删除设备上的临时视频
-	rmCmd := exec.Command(adb, "shell", "rm", "-f", r.devicePath)
+	rmCmd := exec.Command(adb, withDeviceArgs(r.serial, "shell", "rm", "-f", r.devicePath)...)
 	hideWindow(rmCmd)
 	rmCmd.Run()
 
@@ -455,10 +499,15 @@ func (r *VideoRecorder) IsRecording() bool {
 // StopScreenRecording 停止设备上正在运行的 screenrecord 进程
 // 这是一个全局函数，用于在外部需要强制停止录制时调用
 func StopScreenRecording() {
+	StopScreenRecordingForDevice("")
+}
+
+// StopScreenRecordingForDevice 停止指定设备上正在运行的 screenrecord 进程
+func StopScreenRecordingForDevice(serial string) {
 	adb := findAdb()
 
 	// 发送 SIGINT 信号优雅停止 screenrecord，让它正确写入文件尾部
-	killCmd := exec.Command(adb, "shell", "pkill", "-SIGINT", "screenrecord")
+	killCmd := exec.Command(adb, withDeviceArgs(serial, "shell", "pkill", "-SIGINT", "screenrecord")...)
 	hideWindow(killCmd)
 	killCmd.Run()
 
@@ -466,7 +515,7 @@ func StopScreenRecording() {
 	time.Sleep(1500 * time.Millisecond)
 
 	// 再次尝试强制终止（如果还在运行）
-	killCmd2 := exec.Command(adb, "shell", "pkill", "-9", "screenrecord")
+	killCmd2 := exec.Command(adb, withDeviceArgs(serial, "shell", "pkill", "-9", "screenrecord")...)
 	hideWindow(killCmd2)
 	killCmd2.Run()
 }
@@ -474,10 +523,15 @@ func StopScreenRecording() {
 // StopAllAdbProcesses 停止所有 adb 相关的后台进程
 // 用于在强制停止播放时清理所有相关资源
 func StopAllAdbProcesses() {
+	StopAllAdbProcessesForDevice("")
+}
+
+// StopAllAdbProcessesForDevice 停止指定设备上的后台 adb 相关进程
+func StopAllAdbProcessesForDevice(serial string) {
 	adb := findAdb()
 
 	// 1. 优雅停止 screenrecord
-	killCmd := exec.Command(adb, "shell", "pkill", "-SIGINT", "screenrecord")
+	killCmd := exec.Command(adb, withDeviceArgs(serial, "shell", "pkill", "-SIGINT", "screenrecord")...)
 	hideWindow(killCmd)
 	killCmd.Run()
 
@@ -485,29 +539,14 @@ func StopAllAdbProcesses() {
 	time.Sleep(1500 * time.Millisecond)
 
 	// 2. 强制停止 screenrecord（如果还在运行）
-	killCmd2 := exec.Command(adb, "shell", "pkill", "-9", "screenrecord")
+	killCmd2 := exec.Command(adb, withDeviceArgs(serial, "shell", "pkill", "-9", "screenrecord")...)
 	hideWindow(killCmd2)
 	killCmd2.Run()
-
-	// 3. 停止本机上的 adb logcat 进程
-	// Windows 上使用 taskkill，Linux 上使用 pkill
-	if runtime.GOOS == "windows" {
-		// 终止所有 adb.exe 进程中正在执行 logcat 的
-		// 注意：这会终止所有 adb logcat，但通常这是预期行为
-		killLogcat := exec.Command("taskkill", "/F", "/IM", "adb.exe", "/FI", "WINDOWTITLE eq *logcat*")
-		hideWindow(killLogcat)
-		killLogcat.Run()
-	} else {
-		killLogcat := exec.Command("pkill", "-f", "adb.*logcat")
-		killLogcat.Run()
-	}
 }
 
-// Shutdown stops background adb activity and shuts down the local adb server.
+// Shutdown intentionally leaves shared adb servers untouched.
+// Playback tasks are responsible for cleaning up their own recorder processes.
 func Shutdown() {
-	StopAllAdbProcesses()
-	stopLocalAdbServer()
-	forceStopLocalAdb()
 }
 
 func stopLocalAdbServer() {
@@ -529,7 +568,7 @@ func forceStopLocalAdb() {
 		cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
 		hideWindow(cmd)
 		cmd.Run()
-	case "linux", "darwin":
+	case "linux":
 		cmd := exec.Command("pkill", "-f", adbExecutable)
 		cmd.Run()
 	}
