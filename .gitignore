@@ -1,6 +1,7 @@
 # Build output
 dist/
 tts
+.build-tools/
 
 # Third-party binaries
 bin/

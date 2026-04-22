@@ -1,25 +1,25 @@
 @echo off
 chcp 65001 >nul
 echo ==========================================
-echo   文本语音自动化测试工具 - 批量生成语音
+echo   Voice QA - Generate Audio
 echo ==========================================
 echo.
 
 cd /d "%~dp0"
 
 if not exist "tts.exe" (
-    echo 错误: 找不到 tts.exe
+    echo Error: tts.exe not found
     pause
     exit /b 1
 )
 
-echo 开始批量生成语音...
+echo Generating audio...
 echo.
 
 tts.exe
 
 echo.
 echo ==========================================
-echo 生成完成！
+echo Generate completed
 echo ==========================================
 pause

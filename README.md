@@ -71,9 +71,19 @@ voice-qa/
 ./scripts/build.sh gui
 ```
 
+Windows 下可直接使用 PowerShell / bat 脚本：
+
+```powershell
+.\scripts\build.ps1 -Target gui
+.\scripts\build.ps1 -Target gui -InstallWails
+```
+
+```bat
+scripts\build.bat -Target gui
+```
+
 构建产物在 `dist/` 目录，版本号格式为 `YYYY.MMDD.HHMM`：
 - `tts-linux-amd64-v2025.1222.1723.tar.gz`
-- `tts-windows-amd64-v2025.1222.1723.zip`
 - `tts-gui-windows-amd64-v2025.1222.1723.zip`
 
 ### 3. 使用
@@ -235,12 +245,9 @@ GUI 版本基于 Wails 框架开发，提供完整图形界面，包含 5 个功
 
 ```
 tts-gui-windows-amd64/
-├── 文本语音自动化测试工具.exe  # GUI 主程序
-├── tts.exe                    # 命令行工具
+├── 语音播测工具.exe  # GUI 主程序
 ├── config.json                # 配置文件
 ├── text.txt                   # 文本文件（每行一条）
-├── generate.bat               # 快捷批量生成脚本
-├── play.bat                   # 快捷播放模式脚本
 ├── ttsengine/                 # Piper 离线 TTS 引擎
 ├── models/                    # 语音模型
 ├── adb/                       # ADB 工具

@@ -390,10 +390,10 @@ build_windows_gui() {
 
     # 构建 GUI
     cd "$PROJECT_DIR/gui"
-    wails build -platform windows/amd64 -o "文本语音自动化测试工具.exe" -clean
+    wails build -platform windows/amd64 -o "语音播测工具.exe" -clean
 
     # 复制 GUI 可执行文件
-    cp "$PROJECT_DIR/gui/build/bin/文本语音自动化测试工具.exe" "$OUTPUT_DIR/"
+    cp "$PROJECT_DIR/gui/build/bin/语音播测工具.exe" "$OUTPUT_DIR/"
 
     cd "$PROJECT_DIR"
 
@@ -415,14 +415,6 @@ build_windows_gui() {
     if [ -f "$PROJECT_DIR/bin/ffmpeg-windows/ffmpeg.exe" ]; then
         cp "$PROJECT_DIR/bin/ffmpeg-windows/ffmpeg.exe" "$OUTPUT_DIR/ffmpeg/"
     fi
-
-    # 构建命令行工具 tts.exe
-    echo "  构建命令行工具 tts.exe..."
-    GOOS=windows GOARCH=amd64 go build -o "$OUTPUT_DIR/tts.exe" ./cmd/
-
-    # 复制 bat 文件
-    cp "$PROJECT_DIR/scripts/generate.bat" "$OUTPUT_DIR/"
-    cp "$PROJECT_DIR/scripts/play.bat" "$OUTPUT_DIR/"
 
     # 复制模型
     cp "$PROJECT_DIR/models"/*.onnx "$OUTPUT_DIR/models/" 2>/dev/null || true
@@ -487,18 +479,18 @@ case "${1:-all}" in
         build_linux
         ;;
     windows)
-        build_windows
+        echo "standalone windows CLI release removed; use: $0 gui"
+        exit 1
         ;;
     gui)
         build_windows_gui
         ;;
     all)
         build_linux
-        build_windows
         build_windows_gui
         ;;
     *)
-        echo "用法: $0 [linux|windows|gui|all]"
+        echo "用法: $0 [linux|gui|all]"
         exit 1
         ;;
 esac
