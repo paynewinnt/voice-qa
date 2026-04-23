@@ -544,9 +544,13 @@ func StopAllAdbProcessesForDevice(serial string) {
 	killCmd2.Run()
 }
 
-// Shutdown intentionally leaves shared adb servers untouched.
-// Playback tasks are responsible for cleaning up their own recorder processes.
+// Shutdown stops all adb-related background work and tears down adb servers.
+// This is used by the GUI on exit when the user wants the tool to leave no adb
+// processes behind, including system-level adb.exe instances on Windows.
 func Shutdown() {
+	StopAllAdbProcesses()
+	stopLocalAdbServer()
+	forceStopAllAdb()
 }
 
 func stopLocalAdbServer() {
@@ -571,5 +575,16 @@ func forceStopLocalAdb() {
 	case "linux":
 		cmd := exec.Command("pkill", "-f", adbExecutable)
 		cmd.Run()
+	}
+}
+
+func forceStopAllAdb() {
+	switch runtime.GOOS {
+	case "windows":
+		cmd := exec.Command("powershell", "-NoProfile", "-Command", "Get-Process -Name 'adb' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue")
+		hideWindow(cmd)
+		cmd.Run()
+	case "linux":
+		exec.Command("pkill", "-x", "adb").Run()
 	}
 }

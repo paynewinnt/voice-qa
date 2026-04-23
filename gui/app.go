@@ -73,6 +73,7 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 
 	player.StopAllPlayback()
+	adb.Shutdown()
 }
 
 func (a *App) initTTSEngine() {
