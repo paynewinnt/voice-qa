@@ -2,6 +2,7 @@
 dist/
 !gui/frontend/dist/
 !gui/frontend/dist/index.html
+gui/frontend/dist/wailsjs/
 tts
 .build-tools/
 
@@ -13,6 +14,8 @@ output/
 
 # IDE
 .idea/
+.DS_Store
+**/.DS_Store
 
 # Claude
 .claude/
