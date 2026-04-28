@@ -11,7 +11,7 @@
   - 多种声音可选（播音男声、标准女声等）
   - 批量文本转语音，可配置语音模板（前缀、后缀、静音间隔）
 - **播放模式测试**：播放语音 + adb logcat 记录 + 自动截图 + 视频录制 + 断言验证
-- **应用性能测试**：冷启动时间采集，统计均值和标准差
+- **应用性能测试**：冷启动时间采集，支持 `am start -W`、Perfetto trace、logcat 时间线和批量统计
 - **设备管理**：ADB 连接/断开、多设备 APK 安装
 - Windows GUI 播放链路按选定设备执行，避免多设备误打
 - Windows GUI 每次播放生成独立会话目录，历史报告、日志、截图、录屏不互相覆盖
@@ -29,13 +29,14 @@ voice-qa/
 ├── gui/                    # GUI 程序 (Wails)
 │   ├── main.go
 │   ├── app.go
-│   └── frontend/           # 前端界面
+│   └── frontend/dist/      # Wails 嵌入前端页面（当前仓库无独立前端源码）
 ├── internal/
 │   ├── audio/              # WAV 音频处理
 │   ├── config/             # 配置文件管理
 │   ├── player/             # 音频播放
 │   ├── tts/                # TTS 引擎 (Edge TTS / Piper)
-│   └── adb/                # ADB 操作（logcat、截图）
+│   ├── adb/                # ADB 操作（logcat、截图）
+│   └── perfetto/           # 启动时间 trace、logcat 分析和报告生成
 ├── bin/
 │   ├── piper/              # Linux Piper 引擎
 │   ├── piper-windows/      # Windows Piper 引擎
@@ -89,6 +90,8 @@ scripts\build.bat -Target gui
 构建产物在 `dist/` 目录，版本号格式为 `YYYY.MMDD.HHMM`：
 - `tts-linux-amd64-v2025.1222.1723.tar.gz`
 - `tts-gui-windows-amd64-v2025.1222.1723.zip`
+
+> 注意：`gui/frontend/dist/index.html` 虽然位于 `dist` 目录下，但它是 Wails 通过 `go:embed all:frontend/dist` 嵌入的 GUI 页面。当前仓库没有独立前端源码，因此该文件必须纳入版本控制；否则其它电脑克隆后无法复现 Windows GUI 构建。
 
 ### 3. 使用
 
@@ -262,7 +265,7 @@ GUI 版本基于 Wails 框架开发，提供完整图形界面，包含 5 个功
 | 标签页 | 功能 |
 |--------|------|
 | **设备管理** | ADB 设备连接/断开（支持 IP 连接），多设备 APK 安装 |
-| **启动时间测试** | 应用冷启动计时（毫秒精度），统计均值和标准差；支持强制停止、Kill All、回到首页 |
+| **启动时间测试** | 应用冷启动计时（毫秒精度），支持命令式应用控制、Perfetto trace、logcat 时间线、单次/批量统计 |
 | **生成语音** | 文本列表管理，批量 TTS 生成，实时进度（支持中途停止） |
 | **播放模式** | 选择目标设备后执行播放测试，自动采集 logcat / 截图 / 录屏并输出独立会话目录（支持中途停止） |
 | **配置设置** | 语音引擎选择，模板可视化编辑，视频录制参数配置 |

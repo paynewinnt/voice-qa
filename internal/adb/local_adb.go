@@ -33,7 +33,7 @@ func resolveLocalAdbPath() string {
 		}
 	}
 
-	return filepath.Join("adb", adbName)
+	return ""
 }
 
 // ParseArgs 将命令字符串拆分为 adb 参数，支持单引号、双引号和转义。

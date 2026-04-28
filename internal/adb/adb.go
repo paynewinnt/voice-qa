@@ -101,6 +101,11 @@ func Command(args ...string) *exec.Cmd {
 	return exec.Command(findAdb(), args...)
 }
 
+// HideWindow hides the console window for a command on Windows.
+func HideWindow(cmd *exec.Cmd) {
+	hideWindow(cmd)
+}
+
 func withDeviceArgs(serial string, args ...string) []string {
 	serial = strings.TrimSpace(serial)
 	if serial == "" {

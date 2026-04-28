@@ -1,5 +1,7 @@
 # Build output
 dist/
+!gui/frontend/dist/
+!gui/frontend/dist/index.html
 tts
 .build-tools/
 

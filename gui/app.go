@@ -17,6 +17,7 @@ import (
 	"voice-qa/internal/adb"
 	"voice-qa/internal/audio"
 	"voice-qa/internal/config"
+	"voice-qa/internal/perfetto"
 	"voice-qa/internal/player"
 	"voice-qa/internal/tts"
 
@@ -35,6 +36,10 @@ type App struct {
 	playDir          string     // 播放目录（默认为 output）
 	playDevice       string     // 播放模式目标设备序列号
 	activePlayDevice string
+	perfSession      *perfetto.Session
+	perfLogcat       *perfetto.LogcatSession
+	perfResult       *perfetto.LaunchResult
+	perfTimer        *time.Timer
 	cmdMu            sync.Mutex // 保护 generateCmd 和 playCmd 的互斥锁
 }
 
@@ -63,6 +68,14 @@ func (a *App) shutdown(ctx context.Context) {
 	a.cmdMu.Lock()
 	genCancel := generateCancel
 	playCancel := playCancel
+	perfSession := a.perfSession
+	perfLogcat := a.perfLogcat
+	if a.perfTimer != nil {
+		a.perfTimer.Stop()
+		a.perfTimer = nil
+	}
+	a.perfSession = nil
+	a.perfLogcat = nil
 	a.cmdMu.Unlock()
 
 	if genCancel != nil {
@@ -70,6 +83,12 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	if playCancel != nil {
 		playCancel()
+	}
+	if perfSession != nil {
+		_, _ = perfSession.StopAndPull()
+	}
+	if perfLogcat != nil {
+		_ = perfLogcat.Stop()
 	}
 
 	player.StopAllPlayback()
@@ -1123,12 +1142,130 @@ func (a *App) PerfGoHome(serial string) AdbResult {
 	return AdbResult{Success: true, Message: "已按两次返回键"}
 }
 
+// PerfControlCommands 应用控制命令选项。
+type PerfControlCommands struct {
+	ForceStop bool `json:"forceStop"`
+	ClearData bool `json:"clearData"`
+	Back      bool `json:"back"`
+}
+
+// PerfRunControlCommands 按选择顺序执行应用控制命令。
+func (a *App) PerfRunControlCommands(serial, packageName string, opts PerfControlCommands) AdbResult {
+	serial = strings.TrimSpace(serial)
+	packageName = strings.TrimSpace(packageName)
+	if serial == "" {
+		return AdbResult{Success: false, Message: "请先选择设备"}
+	}
+	if (opts.ForceStop || opts.ClearData) && packageName == "" {
+		return AdbResult{Success: false, Message: "请选择应用包名"}
+	}
+	if !opts.ForceStop && !opts.ClearData && !opts.Back {
+		return AdbResult{Success: false, Message: "请至少选择一个命令"}
+	}
+
+	var messages []string
+	if opts.ForceStop {
+		cmd := adb.Command("-s", serial, "shell", "am", "force-stop", packageName)
+		hideConsoleWindow(cmd)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return AdbResult{Success: false, Message: fmt.Sprintf("force-stop 失败: %s %v", string(out), err)}
+		}
+		messages = append(messages, fmt.Sprintf("force-stop %s 完成", packageName))
+	}
+	if opts.ClearData {
+		cmd := adb.Command("-s", serial, "shell", "pm", "clear", packageName)
+		hideConsoleWindow(cmd)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return AdbResult{Success: false, Message: fmt.Sprintf("pm clear 失败: %s %v", string(out), err)}
+		}
+		messages = append(messages, fmt.Sprintf("pm clear %s 完成", packageName))
+	}
+	if opts.Back {
+		for i := 0; i < 2; i++ {
+			cmd := adb.Command("-s", serial, "shell", "input", "keyevent", "KEYCODE_BACK")
+			hideConsoleWindow(cmd)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return AdbResult{Success: false, Message: fmt.Sprintf("back 第%d次失败: %s %v", i+1, string(out), err)}
+			}
+			if i == 0 {
+				time.Sleep(300 * time.Millisecond)
+			}
+		}
+		messages = append(messages, "back 完成")
+	}
+
+	return AdbResult{Success: true, Message: strings.Join(messages, "；")}
+}
+
 // PerfLaunchResult 性能启动结果
 type PerfLaunchResult struct {
-	Success   bool   `json:"success"`
-	Message   string `json:"message"`
-	Output    string `json:"output"`
-	Timestamp string `json:"timestamp"` // 启动命令发出时的精确时间
+	Success     bool   `json:"success"`
+	Message     string `json:"message"`
+	Output      string `json:"output"`
+	Timestamp   string `json:"timestamp"` // 启动命令发出时的精确时间
+	ThisTimeMS  int    `json:"thisTimeMs"`
+	TotalTimeMS int    `json:"totalTimeMs"`
+	WaitTimeMS  int    `json:"waitTimeMs"`
+	ResultDir   string `json:"resultDir"`
+}
+
+// PerfettoOptions 启动时间测试的 Perfetto 采集配置。
+type PerfettoOptions struct {
+	Enabled            bool `json:"enabled"`
+	MaxDurationSeconds int  `json:"maxDurationSeconds"`
+	BufferSizeMB       int  `json:"bufferSizeMB"`
+}
+
+type PerfBatchOptions struct {
+	Count                    int             `json:"count"`
+	IntervalSeconds          int             `json:"intervalSeconds"`
+	PostLaunchCaptureSeconds int             `json:"postLaunchCaptureSeconds"`
+	ClearData                bool            `json:"clearData"`
+	ForceStop                bool            `json:"forceStop"`
+	Perfetto                 PerfettoOptions `json:"perfetto"`
+}
+
+type PerfBatchResult struct {
+	Success     bool                    `json:"success"`
+	Message     string                  `json:"message"`
+	ResultDir   string                  `json:"resultDir"`
+	Runs        []perfetto.LaunchResult `json:"runs"`
+	Count       int                     `json:"count"`
+	Successes   int                     `json:"successes"`
+	MeanTotalMS float64                 `json:"meanTotalMs"`
+	StdTotalMS  float64                 `json:"stdTotalMs"`
+	MinTotalMS  int                     `json:"minTotalMs"`
+	MaxTotalMS  int                     `json:"maxTotalMs"`
+}
+
+// PerfettoStartResult 启动计时结果。
+type PerfettoStartResult struct {
+	Success      bool                      `json:"success"`
+	Message      string                    `json:"message"`
+	Output       string                    `json:"output"`
+	Timestamp    string                    `json:"timestamp"`
+	ThisTimeMS   int                       `json:"thisTimeMs"`
+	TotalTimeMS  int                       `json:"totalTimeMs"`
+	WaitTimeMS   int                       `json:"waitTimeMs"`
+	ResultDir    string                    `json:"resultDir"`
+	TraceEnabled bool                      `json:"traceEnabled"`
+	Capability   perfetto.CapabilityResult `json:"capability"`
+}
+
+// PerfettoStopResult 停止计时结果。
+type PerfettoStopResult struct {
+	Success         bool                      `json:"success"`
+	Message         string                    `json:"message"`
+	TraceFile       string                    `json:"traceFile"`
+	LogcatFile      string                    `json:"logcatFile"`
+	ReportFile      string                    `json:"reportFile"`
+	TimelineFile    string                    `json:"timelineFile"`
+	TraceSizeBytes  int64                     `json:"traceSizeBytes"`
+	TraceAnalyzable bool                      `json:"traceAnalyzable"`
+	TraceWarning    string                    `json:"traceWarning"`
+	ResultDir       string                    `json:"resultDir"`
+	Reason          string                    `json:"reason"`
+	Capability      perfetto.CapabilityResult `json:"capability"`
 }
 
 // PerfLaunchActivity 启动 Activity 并返回 am start -W 的输出
@@ -1148,13 +1285,505 @@ func (a *App) PerfLaunchActivity(serial, component string) PerfLaunchResult {
 			Timestamp: timestamp,
 		}
 	}
+	thisTime, totalTime, waitTime := perfetto.ParseAmStartOutput(string(output))
 
 	return PerfLaunchResult{
-		Success:   true,
-		Message:   "启动成功",
-		Output:    string(output),
-		Timestamp: timestamp,
+		Success:     true,
+		Message:     "启动成功",
+		Output:      string(output),
+		Timestamp:   timestamp,
+		ThisTimeMS:  thisTime,
+		TotalTimeMS: totalTime,
+		WaitTimeMS:  waitTime,
 	}
+}
+
+func (a *App) PerfRunLaunchBatch(serial, component string, opts PerfBatchOptions) PerfBatchResult {
+	serial = strings.TrimSpace(serial)
+	component = strings.TrimSpace(component)
+	if serial == "" {
+		return PerfBatchResult{Success: false, Message: "请先选择设备"}
+	}
+	if component == "" || !strings.Contains(component, "/") {
+		return PerfBatchResult{Success: false, Message: "请输入完整的 Component 名称"}
+	}
+
+	if opts.Count <= 0 {
+		opts.Count = 5
+	}
+	if opts.Count > 50 {
+		opts.Count = 50
+	}
+	if opts.IntervalSeconds < 0 {
+		opts.IntervalSeconds = 0
+	}
+	if opts.PostLaunchCaptureSeconds <= 0 {
+		opts.PostLaunchCaptureSeconds = 5
+	}
+	if opts.PostLaunchCaptureSeconds > 60 {
+		opts.PostLaunchCaptureSeconds = 60
+	}
+
+	a.cmdMu.Lock()
+	if a.perfResult != nil || a.perfSession != nil || a.perfLogcat != nil {
+		a.cmdMu.Unlock()
+		return PerfBatchResult{Success: false, Message: "当前已有启动时间测试在运行"}
+	}
+	a.cmdMu.Unlock()
+
+	batchDir := filepath.Join(a.resolvedOutputDir(), "perf", "batch-"+time.Now().Format("20060102-150405")+"-"+fmt.Sprint(time.Now().UnixNano()))
+	if err := os.MkdirAll(batchDir, 0755); err != nil {
+		return PerfBatchResult{Success: false, Message: fmt.Sprintf("创建批量结果目录失败: %v", err)}
+	}
+
+	packageName := perfetto.PackageNameFromComponent(component)
+	result := PerfBatchResult{
+		Success:   true,
+		Message:   "批量启动测试完成",
+		ResultDir: batchDir,
+		Count:     opts.Count,
+		Runs:      make([]perfetto.LaunchResult, 0, opts.Count),
+	}
+
+	for i := 1; i <= opts.Count; i++ {
+		runDir := filepath.Join(batchDir, fmt.Sprintf("run-%02d", i))
+		run := a.runLaunchBatchOnce(serial, component, packageName, runDir, opts, i)
+		result.Runs = append(result.Runs, run)
+		if run.Success {
+			result.Successes++
+		}
+		if i < opts.Count && opts.IntervalSeconds > 0 {
+			time.Sleep(time.Duration(opts.IntervalSeconds) * time.Second)
+		}
+	}
+
+	fillBatchStats(&result)
+	result.Success = result.Successes == len(result.Runs)
+	if !result.Success {
+		result.Message = fmt.Sprintf("批量启动测试完成，%d/%d 成功", result.Successes, len(result.Runs))
+	}
+	_ = saveJSON(filepath.Join(batchDir, "summary.json"), result)
+	return result
+}
+
+func (a *App) runLaunchBatchOnce(serial, component, packageName, resultDir string, opts PerfBatchOptions, index int) perfetto.LaunchResult {
+	_ = os.MkdirAll(resultDir, 0755)
+	startTime := time.Now()
+	result := perfetto.LaunchResult{
+		Success:     false,
+		Serial:      serial,
+		Component:   component,
+		PackageName: packageName,
+		ResultDir:   resultDir,
+		Timestamp:   startTime.Format("2006-01-02 15:04:05.000"),
+		Message:     fmt.Sprintf("第 %d 轮启动测试", index),
+	}
+
+	var prep strings.Builder
+	if opts.ForceStop || opts.ClearData {
+		cmd := adb.Command("-s", serial, "shell", "am", "force-stop", packageName)
+		hideConsoleWindow(cmd)
+		out, err := cmd.CombinedOutput()
+		fmt.Fprintf(&prep, "$ am force-stop %s\n%s\n", packageName, string(out))
+		if err != nil {
+			fmt.Fprintf(&prep, "force-stop error: %v\n", err)
+		}
+	}
+	if opts.ClearData {
+		cmd := adb.Command("-s", serial, "shell", "pm", "clear", packageName)
+		hideConsoleWindow(cmd)
+		out, err := cmd.CombinedOutput()
+		fmt.Fprintf(&prep, "$ pm clear %s\n%s\n", packageName, string(out))
+		if err != nil {
+			fmt.Fprintf(&prep, "pm clear error: %v\n", err)
+		}
+	}
+	if prep.Len() > 0 {
+		_ = os.WriteFile(filepath.Join(resultDir, "prep.txt"), []byte(prep.String()), 0644)
+	}
+
+	logcatSession, logcatErr := perfetto.StartLogcat(serial, resultDir)
+	if logcatErr == nil {
+		result.LogcatFile = logcatSession.LogFile
+	} else {
+		result.Message = fmt.Sprintf("启动 logcat 失败: %v", logcatErr)
+	}
+
+	var session *perfetto.Session
+	if opts.Perfetto.Enabled {
+		perfOpts := perfetto.NormalizeOptions(perfetto.Options{
+			Enabled:            true,
+			MaxDurationSeconds: opts.PostLaunchCaptureSeconds + 5,
+			BufferSizeMB:       opts.Perfetto.BufferSizeMB,
+		})
+		var err error
+		session, err = perfetto.Start(serial, packageName, resultDir, perfOpts)
+		if err != nil {
+			result.Capability = perfetto.DetectCapability(serial)
+			result.TraceWarning = err.Error()
+		} else {
+			result.Capability = session.Capability
+		}
+	}
+
+	cmd := adb.Command("-s", serial, "shell", "am", "start", "-W", "-n", component)
+	hideConsoleWindow(cmd)
+	output, launchErr := cmd.CombinedOutput()
+	rawOutput := string(output)
+	result.RawOutput = rawOutput
+	result.ThisTimeMS, result.TotalTimeMS, result.WaitTimeMS = perfetto.ParseAmStartOutput(rawOutput)
+	_ = perfetto.SaveAmStartOutput(resultDir, rawOutput)
+
+	if opts.PostLaunchCaptureSeconds > 0 {
+		time.Sleep(time.Duration(opts.PostLaunchCaptureSeconds) * time.Second)
+	}
+	if logcatSession != nil {
+		_ = logcatSession.Stop()
+		result.LogcatFile = logcatSession.LogFile
+		a.saveLogcatAnalysis(&result)
+	}
+	if session != nil {
+		traceFile, err := session.StopAndPull()
+		result.TraceFile = traceFile
+		result.TraceSizeBytes = session.TraceSizeBytes
+		result.TraceAnalyzable = session.TraceAnalyzable
+		result.TraceWarning = session.TraceWarning
+		result.Capability = session.Capability
+		if err != nil {
+			result.TraceWarning = fmt.Sprintf("停止 Perfetto 失败: %v", err)
+		}
+	}
+
+	if launchErr != nil {
+		result.Success = false
+		result.Message = fmt.Sprintf("启动失败: %v", launchErr)
+	} else {
+		result.Success = true
+		result.Message = "启动成功"
+	}
+	result.StoppedAt = time.Now().Format("2006-01-02 15:04:05.000")
+	result.StopReason = "batch"
+	result.ManualDurationMS = time.Since(startTime).Milliseconds()
+	_ = perfetto.SaveMetadata(resultDir, result)
+	return result
+}
+
+// PerfStartLaunchTrace 开始启动计时：可选启动 Perfetto，并执行 am start -W。
+func (a *App) PerfStartLaunchTrace(serial, component string, opts PerfettoOptions) PerfettoStartResult {
+	serial = strings.TrimSpace(serial)
+	component = strings.TrimSpace(component)
+	if serial == "" {
+		return PerfettoStartResult{Success: false, Message: "请先选择设备"}
+	}
+	if component == "" || !strings.Contains(component, "/") {
+		return PerfettoStartResult{Success: false, Message: "请输入完整的 Component 名称"}
+	}
+
+	a.cmdMu.Lock()
+	if a.perfResult != nil || a.perfSession != nil {
+		a.cmdMu.Unlock()
+		return PerfettoStartResult{Success: false, Message: "当前已有启动时间测试在运行"}
+	}
+	a.cmdMu.Unlock()
+
+	resultDir, err := perfetto.CreateResultDir(a.resolvedOutputDir())
+	if err != nil {
+		return PerfettoStartResult{Success: false, Message: fmt.Sprintf("创建结果目录失败: %v", err)}
+	}
+
+	packageName := perfetto.PackageNameFromComponent(component)
+	startTime := time.Now()
+	result := &perfetto.LaunchResult{
+		Success:     false,
+		Serial:      serial,
+		Component:   component,
+		PackageName: packageName,
+		ResultDir:   resultDir,
+		Timestamp:   startTime.Format("2006-01-02 15:04:05.000"),
+	}
+
+	perfOpts := perfetto.NormalizeOptions(perfetto.Options{
+		Enabled:            opts.Enabled,
+		MaxDurationSeconds: opts.MaxDurationSeconds,
+		BufferSizeMB:       opts.BufferSizeMB,
+	})
+
+	logcatSession, err := perfetto.StartLogcat(serial, resultDir)
+	if err != nil {
+		result.Message = err.Error()
+		_ = perfetto.SaveMetadata(resultDir, *result)
+		return PerfettoStartResult{Success: false, Message: err.Error(), ResultDir: resultDir}
+	}
+	result.LogcatFile = logcatSession.LogFile
+
+	var session *perfetto.Session
+	if perfOpts.Enabled {
+		session, err = perfetto.Start(serial, packageName, resultDir, perfOpts)
+		if err != nil {
+			_ = logcatSession.Stop()
+			result.LogcatFile = logcatSession.LogFile
+			result.Capability = perfetto.DetectCapability(serial)
+			result.Message = err.Error()
+			_ = perfetto.SaveMetadata(resultDir, *result)
+			return PerfettoStartResult{Success: false, Message: err.Error(), ResultDir: resultDir, TraceEnabled: true, Capability: result.Capability}
+		}
+		result.Capability = session.Capability
+	}
+
+	a.cmdMu.Lock()
+	a.perfSession = session
+	a.perfLogcat = logcatSession
+	a.perfResult = result
+	if session != nil || logcatSession != nil {
+		a.perfTimer = time.AfterFunc(time.Duration(perfOpts.MaxDurationSeconds)*time.Second, func() {
+			stop := a.stopLaunchTrace("timeout")
+			runtime.EventsEmit(a.ctx, "perfetto-timeout", map[string]interface{}{
+				"success":         stop.Success,
+				"message":         stop.Message,
+				"traceFile":       stop.TraceFile,
+				"logcatFile":      stop.LogcatFile,
+				"reportFile":      stop.ReportFile,
+				"timelineFile":    stop.TimelineFile,
+				"traceSizeBytes":  stop.TraceSizeBytes,
+				"traceAnalyzable": stop.TraceAnalyzable,
+				"traceWarning":    stop.TraceWarning,
+				"resultDir":       stop.ResultDir,
+				"capability":      stop.Capability,
+			})
+		})
+	}
+	a.cmdMu.Unlock()
+
+	cmd := adb.Command("-s", serial, "shell", "am", "start", "-W", "-n", component)
+	hideConsoleWindow(cmd)
+	output, launchErr := cmd.CombinedOutput()
+	rawOutput := string(output)
+	thisTime, totalTime, waitTime := perfetto.ParseAmStartOutput(rawOutput)
+
+	result.RawOutput = rawOutput
+	result.ThisTimeMS = thisTime
+	result.TotalTimeMS = totalTime
+	result.WaitTimeMS = waitTime
+	_ = perfetto.SaveAmStartOutput(resultDir, rawOutput)
+
+	if launchErr != nil {
+		result.Success = false
+		result.Message = fmt.Sprintf("启动失败: %v", launchErr)
+		_ = logcatSession.Stop()
+		a.saveLogcatAnalysis(result)
+		if session != nil {
+			traceFile, stopErr := session.StopAndPull()
+			result.TraceFile = traceFile
+			result.TraceSizeBytes = session.TraceSizeBytes
+			result.TraceAnalyzable = session.TraceAnalyzable
+			result.TraceWarning = session.TraceWarning
+			if stopErr != nil {
+				result.Message = fmt.Sprintf("%s；停止 Perfetto 失败: %v", result.Message, stopErr)
+			}
+		}
+		_ = perfetto.SaveMetadata(resultDir, *result)
+		a.cmdMu.Lock()
+		if a.perfSession == session {
+			a.perfSession = nil
+		}
+		if a.perfResult == result {
+			a.perfResult = nil
+		}
+		if a.perfLogcat == logcatSession {
+			a.perfLogcat = nil
+		}
+		if a.perfTimer != nil {
+			a.perfTimer.Stop()
+			a.perfTimer = nil
+		}
+		a.cmdMu.Unlock()
+		return PerfettoStartResult{
+			Success:      false,
+			Message:      result.Message,
+			Output:       rawOutput,
+			Timestamp:    result.Timestamp,
+			ThisTimeMS:   thisTime,
+			TotalTimeMS:  totalTime,
+			WaitTimeMS:   waitTime,
+			ResultDir:    resultDir,
+			TraceEnabled: session != nil,
+			Capability:   result.Capability,
+		}
+	}
+
+	result.Success = true
+	result.Message = "启动成功"
+	_ = perfetto.SaveMetadata(resultDir, *result)
+	return PerfettoStartResult{
+		Success:      true,
+		Message:      "启动成功",
+		Output:       rawOutput,
+		Timestamp:    result.Timestamp,
+		ThisTimeMS:   thisTime,
+		TotalTimeMS:  totalTime,
+		WaitTimeMS:   waitTime,
+		ResultDir:    resultDir,
+		TraceEnabled: session != nil,
+		Capability:   result.Capability,
+	}
+}
+
+// PerfStopLaunchTrace 停止当前启动计时的 Perfetto 会话并拉取 trace。
+func (a *App) PerfStopLaunchTrace() PerfettoStopResult {
+	return a.stopLaunchTrace("manual")
+}
+
+func (a *App) stopLaunchTrace(reason string) PerfettoStopResult {
+	a.cmdMu.Lock()
+	session := a.perfSession
+	logcatSession := a.perfLogcat
+	result := a.perfResult
+	timer := a.perfTimer
+	a.perfSession = nil
+	a.perfLogcat = nil
+	a.perfResult = nil
+	a.perfTimer = nil
+	a.cmdMu.Unlock()
+
+	if timer != nil {
+		timer.Stop()
+	}
+	if result == nil {
+		return PerfettoStopResult{Success: false, Message: "当前没有运行中的启动时间测试", Reason: reason}
+	}
+
+	now := time.Now()
+	result.StoppedAt = now.Format("2006-01-02 15:04:05.000")
+	result.StopReason = reason
+	if startedAt, err := time.ParseInLocation("2006-01-02 15:04:05.000", result.Timestamp, time.Local); err == nil {
+		result.ManualDurationMS = now.Sub(startedAt).Milliseconds()
+	}
+	if logcatSession != nil {
+		_ = logcatSession.Stop()
+		result.LogcatFile = logcatSession.LogFile
+		a.saveLogcatAnalysis(result)
+	}
+	if session != nil {
+		result.ManualDurationMS = now.Sub(session.StartedAt).Milliseconds()
+		traceFile, err := session.StopAndPull()
+		result.TraceFile = traceFile
+		result.TraceSizeBytes = session.TraceSizeBytes
+		result.TraceAnalyzable = session.TraceAnalyzable
+		result.TraceWarning = session.TraceWarning
+		result.Capability = session.Capability
+		if err != nil {
+			result.Success = false
+			result.Message = fmt.Sprintf("停止 Perfetto 失败: %v", err)
+			_ = perfetto.SaveMetadata(result.ResultDir, *result)
+			return PerfettoStopResult{
+				Success:         false,
+				Message:         result.Message,
+				TraceFile:       traceFile,
+				LogcatFile:      result.LogcatFile,
+				ReportFile:      result.ReportFile,
+				TimelineFile:    result.TimelineFile,
+				TraceSizeBytes:  result.TraceSizeBytes,
+				TraceAnalyzable: result.TraceAnalyzable,
+				TraceWarning:    result.TraceWarning,
+				ResultDir:       result.ResultDir,
+				Reason:          reason,
+				Capability:      result.Capability,
+			}
+		}
+		if result.TraceAnalyzable {
+			result.Message = "Perfetto trace 已保存"
+		} else {
+			result.Message = "Perfetto trace 已保存，但当前文件不可分析"
+		}
+	} else {
+		result.Message = "启动时间测试已结束"
+	}
+
+	_ = perfetto.SaveMetadata(result.ResultDir, *result)
+	return PerfettoStopResult{
+		Success:         true,
+		Message:         result.Message,
+		TraceFile:       result.TraceFile,
+		LogcatFile:      result.LogcatFile,
+		ReportFile:      result.ReportFile,
+		TimelineFile:    result.TimelineFile,
+		TraceSizeBytes:  result.TraceSizeBytes,
+		TraceAnalyzable: result.TraceAnalyzable,
+		TraceWarning:    result.TraceWarning,
+		ResultDir:       result.ResultDir,
+		Reason:          reason,
+		Capability:      result.Capability,
+	}
+}
+
+func (a *App) saveLogcatAnalysis(result *perfetto.LaunchResult) {
+	if result == nil || strings.TrimSpace(result.LogcatFile) == "" {
+		return
+	}
+	analysis, err := perfetto.AnalyzeLogcatFile(result.LogcatFile, result.PackageName, result.Component)
+	if err != nil {
+		return
+	}
+	result.LogcatAnalysis = analysis
+	if timelineFile, err := perfetto.SaveTimeline(result.ResultDir, analysis); err == nil {
+		result.TimelineFile = timelineFile
+	}
+	if reportFile, err := perfetto.SaveReport(result.ResultDir, analysis); err == nil {
+		result.ReportFile = reportFile
+	}
+}
+
+func fillBatchStats(result *PerfBatchResult) {
+	var values []int
+	for _, run := range result.Runs {
+		if run.TotalTimeMS > 0 {
+			values = append(values, run.TotalTimeMS)
+		}
+	}
+	if len(values) == 0 {
+		return
+	}
+	result.MinTotalMS = values[0]
+	result.MaxTotalMS = values[0]
+	var sum int
+	for _, value := range values {
+		sum += value
+		if value < result.MinTotalMS {
+			result.MinTotalMS = value
+		}
+		if value > result.MaxTotalMS {
+			result.MaxTotalMS = value
+		}
+	}
+	result.MeanTotalMS = float64(sum) / float64(len(values))
+	var variance float64
+	for _, value := range values {
+		diff := float64(value) - result.MeanTotalMS
+		variance += diff * diff
+	}
+	result.StdTotalMS = variance / float64(len(values))
+	if result.StdTotalMS > 0 {
+		result.StdTotalMS = sqrt(result.StdTotalMS)
+	}
+}
+
+func sqrt(value float64) float64 {
+	if value <= 0 {
+		return 0
+	}
+	x := value
+	for i := 0; i < 20; i++ {
+		x = 0.5 * (x + value/x)
+	}
+	return x
+}
+
+func saveJSON(path string, value interface{}) error {
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
 }
 
 // legacyStopGenerate 保留旧版停止生成实现，供兼容路径使用。

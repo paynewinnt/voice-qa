@@ -1,0 +1,3039 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>语音播测工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --accent: #16326b;
+            --accent-soft: #2d4f95;
+            --page-bg: #ffffff;
+            --surface-muted: #f5f7fb;
+            --border: #d9e0ec;
+            --text-main: #1d2a44;
+            --text-muted: #64748b;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+            background: var(--page-bg);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--text-main);
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: var(--text-main);
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            text-shadow: none;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .tabs {
+            display: flex;
+            background: var(--surface-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px 20px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 500;
+            color: #666;
+            transition: all 0.3s;
+            border: none;
+            background: none;
+            font-size: 14px;
+        }
+
+        .tab:hover {
+            background: #eee;
+        }
+
+        .tab.active {
+            background: white;
+            color: var(--accent);
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .tab-content {
+            display: none;
+            padding: 25px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+            font-size: 14px;
+        }
+
+        /* 模板编辑器样式 */
+        .template-segment {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+
+        .template-segment.voice {
+            border-left: 4px solid #4CAF50;
+        }
+
+        .template-segment.silence {
+            border-left: 4px solid #2196F3;
+        }
+
+        .template-segment.main {
+            border-left: 4px solid #FF9800;
+            background: #fff3e0;
+        }
+
+        .template-segment .segment-type {
+            font-weight: 500;
+            min-width: 60px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .template-segment input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .template-segment input[type="number"] {
+            width: 80px;
+            flex: none;
+        }
+
+        .template-segment .segment-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .template-segment .segment-actions button {
+            padding: 5px 8px;
+            font-size: 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .template-segment .btn-move {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .template-segment .btn-delete {
+            background: #f44336;
+            color: white;
+        }
+
+        .template-segment .btn-move:hover {
+            background: #bdbdbd;
+        }
+
+        .template-segment .btn-delete:hover {
+            background: #d32f2f;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--accent-soft);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .form-row-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(22, 50, 107, 0.28);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .text-list {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .text-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .text-item:last-child {
+            border-bottom: none;
+        }
+
+        .text-item-num {
+            width: 40px;
+            color: #999;
+            font-size: 12px;
+        }
+
+        .text-item-content {
+            flex: 1;
+            font-size: 14px;
+        }
+
+        .text-item-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .text-item-actions button {
+            padding: 5px 10px;
+            font-size: 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .text-item-actions .btn-delete {
+            background: #dc3545;
+            color: white;
+        }
+
+        .add-text-area {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .add-text-area input {
+            flex: 1;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .progress-bar.active {
+            display: block;
+        }
+
+        .progress-bar-inner {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+
+        .status-text {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .result-list {
+            margin-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .result-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+
+        .result-item.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .result-item.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .alert {
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .alert-info {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .perf-capability-panel {
+            margin-top: 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .perf-capability-panel.active {
+            display: block;
+        }
+
+        .perf-capability-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--surface-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .perf-capability-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .perf-capability-summary {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .perf-capability-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0;
+        }
+
+        .perf-capability-item {
+            padding: 10px 12px;
+            border-right: 1px solid var(--border);
+            min-height: 66px;
+        }
+
+        .perf-capability-item:last-child {
+            border-right: none;
+        }
+
+        .perf-capability-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .perf-capability-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-main);
+            overflow-wrap: anywhere;
+        }
+
+        .perf-capability-detail {
+            margin-top: 5px;
+            font-size: 12px;
+            color: var(--text-muted);
+            overflow-wrap: anywhere;
+        }
+
+        .perf-state-ok {
+            color: #155724;
+        }
+
+        .perf-state-warn {
+            color: #8a5a00;
+        }
+
+        .perf-state-bad {
+            color: #721c24;
+        }
+
+        .perf-trace-warning {
+            display: block;
+            margin-top: 3px;
+            color: #721c24;
+            overflow-wrap: anywhere;
+        }
+
+        .command-panel {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: stretch;
+        }
+
+        .command-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .command-list.three {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .command-item {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 10px;
+            align-items: start;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            min-height: 74px;
+        }
+
+        .command-item input[type="checkbox"] {
+            margin-top: 3px;
+        }
+
+        .command-name {
+            display: block;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--accent);
+            overflow-wrap: anywhere;
+        }
+
+        .command-desc {
+            display: block;
+            margin-top: 4px;
+            font-size: 12px;
+            line-height: 1.45;
+            color: var(--text-muted);
+        }
+
+        .perf-command-select {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+            font-size: 12px;
+            line-height: 1.45;
+            color: var(--text-muted);
+        }
+
+        .perf-command-select option {
+            font-family: inherit;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .command-action {
+            min-width: 96px;
+            align-self: stretch;
+        }
+
+        @media (max-width: 760px) {
+            .perf-capability-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .perf-capability-item:nth-child(2) {
+                border-right: none;
+            }
+
+            .perf-capability-item:nth-child(-n+2) {
+                border-bottom: 1px solid var(--border);
+            }
+
+            .command-panel,
+            .command-list.three {
+                grid-template-columns: 1fr;
+            }
+
+            .command-action {
+                min-height: 44px;
+            }
+        }
+
+        .audio-structure {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #666;
+            text-align: center;
+        }
+
+        .audio-structure span {
+            display: inline-block;
+            padding: 4px 8px;
+            margin: 2px;
+            border-radius: 4px;
+        }
+
+        .audio-structure .silence {
+            background: #e9ecef;
+        }
+
+        .audio-structure .voice {
+            background: var(--accent-soft);
+            color: white;
+        }
+
+        .audio-structure .arrow {
+            color: #999;
+        }
+
+        .adb-connect-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        .adb-connect-area input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .adb-connect-area input:focus {
+            outline: none;
+            border-color: var(--accent-soft);
+        }
+
+        .adb-command-box {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .adb-command-prefix {
+            padding: 10px 12px;
+            background: #f5f7fb;
+            border-bottom: 1px solid #ddd;
+            color: var(--accent);
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .adb-command-box textarea {
+            width: 100%;
+            min-height: 110px;
+            border: none;
+            border-radius: 0;
+            resize: vertical;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+        }
+
+        .adb-command-box textarea:focus {
+            outline: none;
+            border: none;
+        }
+
+        .footer {
+            position: fixed;
+            bottom: 10px;
+            right: 20px;
+            font-size: 12px;
+            color: rgba(29, 42, 68, 0.45);
+        }
+
+        .output-console {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            display: none;
+        }
+
+        .output-console.active {
+            display: block;
+        }
+
+        .output-console .line {
+            margin: 2px 0;
+        }
+
+        .output-console .line.error {
+            color: #f48771;
+        }
+
+        .output-console .line.success {
+            color: #89d185;
+        }
+
+        .output-console .line.info {
+            color: #6cb6ff;
+        }
+
+        .dialog-overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.28);
+            padding: 24px;
+            z-index: 2000;
+        }
+
+        .dialog-overlay.active {
+            display: flex;
+        }
+
+        .dialog {
+            width: min(520px, 100%);
+            background: #ffffff;
+            border: 1px solid rgba(22, 50, 107, 0.12);
+            border-radius: 16px;
+            box-shadow: 0 28px 60px rgba(15, 23, 42, 0.18);
+            overflow: hidden;
+        }
+
+        .dialog-header {
+            padding: 18px 22px 10px;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .dialog-body {
+            padding: 0 22px 18px;
+            font-size: 15px;
+            line-height: 1.7;
+            color: #334155;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .dialog-actions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 0 22px 22px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>语音播测工具</h1>
+        </div>
+
+        <div class="card">
+            <div class="tabs">
+                <button class="tab active" data-tab="devmgr">设备管理</button>
+                <button class="tab" data-tab="perf">启动时间测试</button>
+                <button class="tab" data-tab="generate">生成语音</button>
+                <button class="tab" data-tab="play">播放模式</button>
+                <button class="tab" data-tab="config">配置设置</button>
+            </div>
+
+            <!-- 设备管理 -->
+            <div id="devmgr" class="tab-content active">
+                <div class="section-header">
+                    <span class="section-title">连接设备</span>
+                </div>
+
+                <div class="adb-connect-area">
+                    <input type="text" id="devAdbIp" placeholder="输入设备 IP 地址，如: 10.42.0.165">
+                    <button class="btn btn-warning" onclick="devConnect()">连接</button>
+                </div>
+                <div id="devStatus" class="alert alert-info">请连接设备或刷新列表</div>
+
+                <div class="section-header" style="margin-top:20px;">
+                    <span class="section-title">已连接设备</span>
+                    <button class="btn btn-secondary" onclick="devRefresh()" style="padding:6px 14px;font-size:13px;">刷新列表</button>
+                </div>
+
+                <div style="border:1px solid #ddd;border-radius:8px;overflow:hidden;">
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead>
+                            <tr style="background:#f5f5f5;">
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1px solid #ddd;width:30px;">
+                                    <input type="checkbox" id="devSelectAll" onchange="devToggleAll()" style="width:auto;">
+                                </th>
+                                <th style="padding:10px 12px;text-align:left;border-bottom:1px solid #ddd;">设备 Serial</th>
+                                <th style="padding:10px 12px;text-align:center;border-bottom:1px solid #ddd;width:80px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="devListBody">
+                            <tr><td colspan="3" style="padding:15px;text-align:center;color:#999;">请点击"刷新列表"</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="btn-group" style="margin-top:15px;">
+                    <button class="btn btn-danger" onclick="devDisconnectSelected()">断开选中设备</button>
+                    <button class="btn btn-secondary" onclick="devDisconnectAll()">断开所有设备</button>
+                </div>
+
+                <div class="section-header" style="margin-top:25px;">
+                    <span class="section-title">安装 APK</span>
+                </div>
+
+                <div class="alert alert-info" style="font-size:13px;">选中上方设备列表中的目标设备，然后选择 APK 文件进行安装（支持多选）。</div>
+
+                <div id="devApkList" style="margin-bottom:10px;"></div>
+
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <button class="btn btn-secondary" onclick="devSelectApks()">选择 APK 文件</button>
+                    <button class="btn btn-primary" id="devInstallBtn" onclick="devInstallApks()">安装到选中设备</button>
+                </div>
+
+                <div class="status-text" id="devInstallStatus"></div>
+                <div class="output-console" id="devOutput"></div>
+
+                <div class="section-header" style="margin-top:25px;">
+                    <span class="section-title">命令执行</span>
+                </div>
+
+                <div class="alert alert-info" style="font-size:13px;">这里执行的命令只会调用程序目录或当前目录下的 <code>adb/adb.exe</code>，不会读取系统 PATH。可直接输入 <code>adb devices</code>，也可只输入 <code>devices</code>。如果选择了设备且命令里没有 <code>-s</code>，系统会自动追加。</div>
+
+                <div class="form-group">
+                    <label for="devCommandDevice">目标设备（可选）</label>
+                    <select id="devCommandDevice" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+                        <option value="">-- 不指定，由命令自行决定 --</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="devCommandInput">ADB 命令</label>
+                    <div class="adb-command-box">
+                        <div class="adb-command-prefix">adb</div>
+                        <textarea id="devCommandInput" placeholder="示例：devices&#10;示例：shell getprop ro.product.model&#10;示例：-s 192.168.1.10:5555 shell pm list packages"></textarea>
+                    </div>
+                </div>
+
+                <div class="btn-group" style="margin-top:15px;">
+                    <button class="btn btn-primary" id="devRunCommandBtn" onclick="devRunCommand()">执行命令</button>
+                    <button class="btn btn-secondary" onclick="devFillCommand('devices')">devices</button>
+                    <button class="btn btn-secondary" onclick="devFillCommand('shell getprop ro.product.model')">读取机型</button>
+                    <button class="btn btn-secondary" onclick="devFillCommand('shell pm list packages -3')">三方包列表</button>
+                </div>
+
+                <div class="status-text" id="devCommandStatus"></div>
+                <div class="output-console" id="devCommandOutput"></div>
+            </div>
+
+            <!-- 启动时间测试 -->
+            <div id="perf" class="tab-content">
+                <div class="section-header">
+                    <span class="section-title">目标设备</span>
+                </div>
+
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <select id="perfDeviceSelect" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+                        <option value="">-- 请先在"设备管理"中连接设备 --</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="perfRefreshDevices()" style="padding:8px 14px;font-size:13px;">刷新</button>
+                </div>
+
+                <div class="section-header" style="margin-top:20px;">
+                    <span class="section-title">应用包名</span>
+                </div>
+
+                <select id="perfPkgSelect" class="perf-command-select" size="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;" onclick="perfOnPkgSelect()">
+                    <option value="zjiptv.mds">zjiptv.mds</option>
+                    <option value="com.telecom.video">com.telecom.video</option>
+                    <option value="__other__" style="color:#2d4f95;">-- 其它（点击列出全部）--</option>
+                </select>
+
+                <div id="perfPkgSearchArea" style="display:none;margin-top:10px;">
+                    <div style="display:flex;gap:10px;">
+                        <input type="text" id="perfPkgSearch" placeholder="搜索过滤包名" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+                        <button class="btn btn-secondary" onclick="perfHideAllPackages()" style="padding:8px 14px;font-size:13px;">收起</button>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top:15px;">
+                    <label>完整 Component 名称</label>
+                    <div style="display:flex;gap:10px;">
+                        <select id="perfComponentSelect" class="perf-command-select" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;" onchange="perfOnComponentSelect()">
+                            <option value="">-- 选择或手动输入 --</option>
+                            <option value="zjiptv.mds/yanhua.tv.app.module.main.MainActivity">zjiptv.mds/yanhua.tv.app.module.main.MainActivity</option>
+                            <option value="com.telecom.video/.activity.MainActivity">com.telecom.video/.activity.MainActivity</option>
+                        </select>
+                    </div>
+                    <input type="text" id="perfComponent" placeholder="或手动输入 Component 名称" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;margin-top:8px;">
+                </div>
+
+                <div class="section-header" style="margin-top:20px;">
+                    <span class="section-title">应用控制</span>
+                </div>
+
+                <div class="command-panel">
+                    <div class="command-list three">
+                        <label class="command-item">
+                            <input type="checkbox" id="perfCmdForceStop" checked>
+                            <span>
+                                <span class="command-name">am force-stop &lt;package&gt;</span>
+                                <span class="command-desc">结束目标应用进程，适合冷启动前清理运行状态。</span>
+                            </span>
+                        </label>
+                        <label class="command-item">
+                            <input type="checkbox" id="perfCmdClearData">
+                            <span>
+                                <span class="command-name">pm clear &lt;package&gt;</span>
+                                <span class="command-desc">清除目标应用数据和缓存，会重置登录态与本地配置。</span>
+                            </span>
+                        </label>
+                        <label class="command-item">
+                            <input type="checkbox" id="perfCmdBack">
+                            <span>
+                                <span class="command-name">input keyevent BACK</span>
+                                <span class="command-desc">连续发送两次返回键，用于退出当前页面或回到上级界面。</span>
+                            </span>
+                        </label>
+                    </div>
+                    <button class="btn btn-primary command-action" id="perfControlRunBtn" onclick="perfRunControlCommands()">执行</button>
+                </div>
+
+                <div class="section-header" style="margin-top:20px;">
+                    <span class="section-title">启动计时</span>
+                </div>
+
+                <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                        <input type="checkbox" id="perfettoEnabled" checked>
+                        启用 Perfetto
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                        最大采集时长
+                        <input type="number" id="perfettoMaxDuration" value="30" min="5" max="300" style="width:76px;padding:7px 8px;border:1px solid #ddd;border-radius:6px;">
+                        秒
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                        Buffer
+                        <input type="number" id="perfettoBufferSize" value="64" min="8" max="512" style="width:76px;padding:7px 8px;border:1px solid #ddd;border-radius:6px;">
+                        MB
+                    </label>
+                    <button class="btn btn-secondary" id="perfOpenResultBtn" onclick="perfOpenResultDir()" style="padding:8px 14px;font-size:13px;" disabled>打开结果目录</button>
+                </div>
+
+                <div class="command-panel">
+                    <div class="command-list">
+                        <div class="command-item">
+                            <span></span>
+                            <span>
+                                <span class="command-name">am start -W -n &lt;component&gt;</span>
+                                <span class="command-desc">启动目标 Activity 并读取 ThisTime、TotalTime、WaitTime；启用 Perfetto 时会同步开始 trace 采集。</span>
+                            </span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary command-action" id="perfStartBtn" onclick="perfStartTimer()">执行启动计时</button>
+                </div>
+
+                <div class="command-panel" style="margin-top:8px;">
+                    <div class="command-list">
+                        <div class="command-item">
+                            <span></span>
+                            <span>
+                                <span class="command-name">perfetto --stop / pull trace</span>
+                                <span class="command-desc">停止当前采集会话，拉取 trace、logcat、报告和时间线文件。</span>
+                            </span>
+                        </div>
+                    </div>
+                    <button class="btn btn-danger command-action" id="perfStopBtn" onclick="perfStopTimer()" disabled>执行停止计时</button>
+                </div>
+
+                <div class="section-header" style="margin-top:18px;">
+                    <span class="section-title">批量启动</span>
+                </div>
+
+                <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                        次数
+                        <input type="number" id="perfBatchCount" value="5" min="1" max="50" style="width:70px;padding:7px 8px;border:1px solid #ddd;border-radius:6px;">
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                        轮间隔
+                        <input type="number" id="perfBatchInterval" value="3" min="0" max="60" style="width:70px;padding:7px 8px;border:1px solid #ddd;border-radius:6px;">
+                        秒
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                        启动后采集
+                        <input type="number" id="perfBatchPostCapture" value="5" min="1" max="60" style="width:70px;padding:7px 8px;border:1px solid #ddd;border-radius:6px;">
+                        秒
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                        <input type="checkbox" id="perfBatchForceStop" checked>
+                        force-stop
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                        <input type="checkbox" id="perfBatchClearData" checked>
+                        pm clear
+                    </label>
+                    <button class="btn btn-primary" id="perfBatchBtn" onclick="perfRunBatch()" style="padding:8px 14px;font-size:13px;">批量启动测试</button>
+                </div>
+
+                <div class="status-text" id="perfStatusText"></div>
+
+                <div class="perf-capability-panel" id="perfCapabilityPanel">
+                    <div class="perf-capability-head">
+                        <span class="perf-capability-title">Perfetto 能力</span>
+                        <span class="perf-capability-summary" id="perfCapabilitySummary">未检测</span>
+                    </div>
+                    <div class="perf-capability-grid">
+                        <div class="perf-capability-item">
+                            <div class="perf-capability-label">perfetto 命令</div>
+                            <div class="perf-capability-value" id="perfCapCommand">未检测</div>
+                            <div class="perf-capability-detail" id="perfCapCommandDetail"></div>
+                        </div>
+                        <div class="perf-capability-item">
+                            <div class="perf-capability-label">atrace</div>
+                            <div class="perf-capability-value" id="perfCapAtrace">未检测</div>
+                            <div class="perf-capability-detail" id="perfCapAtraceDetail"></div>
+                        </div>
+                        <div class="perf-capability-item">
+                            <div class="perf-capability-label">tracefs</div>
+                            <div class="perf-capability-value" id="perfCapTracefs">未检测</div>
+                            <div class="perf-capability-detail" id="perfCapTracefsDetail"></div>
+                        </div>
+                        <div class="perf-capability-item">
+                            <div class="perf-capability-label">kernel trace</div>
+                            <div class="perf-capability-value" id="perfCapKernel">未检测</div>
+                            <div class="perf-capability-detail" id="perfCapKernelDetail"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-header" style="margin-top:20px;">
+                    <span class="section-title">测试记录</span>
+                </div>
+
+                <div style="border:1px solid #ddd;border-radius:8px;overflow:hidden;">
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;" id="perfRecordsTable">
+                        <thead>
+                            <tr style="background:#f5f5f5;">
+                                <th style="padding:10px;text-align:left;border-bottom:1px solid #ddd;">#</th>
+                                <th style="padding:10px;text-align:left;border-bottom:1px solid #ddd;">开始时间</th>
+                                <th style="padding:10px;text-align:left;border-bottom:1px solid #ddd;">停止时间</th>
+                                <th style="padding:10px;text-align:right;border-bottom:1px solid #ddd;">手动(ms)</th>
+                                <th style="padding:10px;text-align:right;border-bottom:1px solid #ddd;">ThisTime</th>
+                                <th style="padding:10px;text-align:right;border-bottom:1px solid #ddd;">TotalTime</th>
+                                <th style="padding:10px;text-align:right;border-bottom:1px solid #ddd;">WaitTime</th>
+                                <th style="padding:10px;text-align:left;border-bottom:1px solid #ddd;">Trace</th>
+                            </tr>
+                        </thead>
+                        <tbody id="perfRecordsBody">
+                            <tr><td colspan="8" style="padding:15px;text-align:center;color:#999;">暂无记录</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="perfStatsArea" style="margin-top:10px;display:none;">
+                    <div class="alert alert-success" id="perfStatsText"></div>
+                </div>
+
+                <div class="btn-group" style="margin-top:15px;">
+                    <button class="btn btn-warning" onclick="perfCalcStats()">计算平均值</button>
+                    <button class="btn btn-danger" onclick="perfClearRecords()">清除数据</button>
+                </div>
+
+                <div class="output-console" id="perfOutput"></div>
+            </div>
+
+            <!-- 生成语音 -->
+            <div id="generate" class="tab-content">
+                <div class="section-header">
+                    <span class="section-title">文本列表</span>
+                    <button class="btn btn-secondary" onclick="openTextFile()" style="padding: 8px 16px; font-size: 13px;">打开文件编辑</button>
+                </div>
+
+                <div class="text-list" id="textList">
+                    <div class="text-item" style="color: #999; justify-content: center;">
+                        加载中...
+                    </div>
+                </div>
+
+                <div class="btn-group" style="margin-top: 15px;">
+                    <button class="btn btn-secondary" onclick="loadTextList()">刷新列表</button>
+                </div>
+
+                <div class="audio-structure">
+                    <span class="silence" id="silenceStart">静音1秒</span>
+                    <span class="arrow">→</span>
+                    <span class="voice" id="prefixVoice">小翼管家</span>
+                    <span class="arrow">→</span>
+                    <span class="silence" id="silenceAfterPrefix">静音2秒</span>
+                    <span class="arrow">→</span>
+                    <span class="voice">文本内容</span>
+                    <span class="arrow">→</span>
+                    <span class="silence" id="silenceAfterMain">静音18秒</span>
+                    <span class="arrow">→</span>
+                    <span class="voice" id="suffix1Voice">小翼管家</span>
+                    <span class="arrow">→</span>
+                    <span class="silence" id="silenceAfterSuffix">静音2秒</span>
+                    <span class="arrow">→</span>
+                    <span class="voice" id="suffix2Voice">返回首页</span>
+                    <span class="arrow">→</span>
+                    <span class="silence" id="silenceEnd">静音5秒</span>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-primary" id="generateBtn" onclick="runGenerate()">批量生成语音</button>
+                    <button class="btn btn-danger" id="stopGenerateBtn" onclick="stopGenerate()" style="display: none;">停止生成</button>
+                    <button class="btn btn-secondary" onclick="openOutputDir()">打开输出目录</button>
+                </div>
+
+                <div class="status-text" id="statusText"></div>
+
+                <div class="output-console" id="generateOutput"></div>
+            </div>
+
+            <!-- 播放模式 -->
+            <div id="play" class="tab-content">
+                <div class="section-header">
+                    <span class="section-title">播放模式</span>
+                </div>
+
+                <div class="alert alert-info">
+                    播放模式会依次播放已生成的语音文件，同时记录 ADB logcat 日志并在指定时间截图。
+                </div>
+
+                <div class="section-header" style="margin-top: 20px;">
+                    <span class="section-title">目标设备</span>
+                </div>
+
+                <div class="play-dir-area" style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
+                    <select id="playDeviceSelect" style="flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <option value="">-- 请先在"设备管理"中连接设备 --</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="devRefresh()">刷新设备</button>
+                </div>
+
+                <div id="playDeviceStatus" class="alert alert-info" style="margin-bottom: 15px;">当前播放设备: 未选择</div>
+
+                <div class="section-header" style="margin-top: 20px;">
+                    <span class="section-title">播放目录</span>
+                </div>
+
+                <div class="play-dir-area" style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
+                    <select id="playDirSelect" style="flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <option value="">默认输出目录 (output)</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="refreshPlayDirs()">刷新</button>
+                    <button class="btn btn-warning" onclick="browsePlayDir()">浏览...</button>
+                </div>
+
+                <div id="playDirStatus" class="alert alert-info" style="margin-bottom: 15px;">当前播放目录: output (默认)</div>
+
+                <div class="btn-group">
+                    <button class="btn btn-success" id="playBtn" onclick="runPlay()">开始播放</button>
+                    <button class="btn btn-danger" id="stopPlayBtn" onclick="stopPlay()" style="display: none;">停止播放</button>
+                    <button class="btn btn-secondary" onclick="openTestReport()">查看测试报告</button>
+                    <button class="btn btn-secondary" onclick="openPlayDir()">打开播放目录</button>
+                </div>
+
+                <div class="status-text" id="playStatusText"></div>
+
+                <div class="output-console" id="playOutput"></div>
+            </div>
+
+            <!-- 配置设置 -->
+            <div id="config" class="tab-content">
+                <div class="section-header">
+                    <span class="section-title">语音引擎配置</span>
+                </div>
+
+                <div class="form-group">
+                    <label>选择语音</label>
+                    <select id="voiceSelect" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <option value="">加载中...</option>
+                    </select>
+                    <div style="margin-top: 8px; font-size: 12px; color: #666;">
+                        提示：Edge 语音需要联网，Piper 语音离线可用
+                    </div>
+                </div>
+
+                <div class="section-header" style="margin-top: 20px;">
+                    <span class="section-title">语音模板配置</span>
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                        提示：$MAIN 代表主文本内容（必须保留）
+                    </div>
+                </div>
+
+                <div id="templateEditor" style="margin-bottom: 15px;">
+                    <!-- 模板列表将通过 JavaScript 动态生成 -->
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button class="btn btn-secondary" onclick="addTemplateSegment('voice')">+ 添加语音</button>
+                    <button class="btn btn-secondary" onclick="addTemplateSegment('silence')">+ 添加静音</button>
+                </div>
+
+                <div class="section-header" style="margin-top: 20px;">
+                    <span class="section-title">播放模式配置</span>
+                </div>
+
+                <div class="form-group">
+                    <label>结束前截图(秒)</label>
+                    <input type="number" id="screenshotBeforeEnd" value="12" step="0.5" style="width: 150px;">
+                </div>
+
+                <div class="section-header" style="margin-top: 20px;">
+                    <span class="section-title">视频录制配置</span>
+                </div>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="enableVideoRecording" style="width: auto; margin-right: 10px;">
+                        启用视频录制
+                    </label>
+                    <div style="margin-top: 8px; font-size: 12px; color: #666;">
+                        勾选后，播放模式会录制设备屏幕视频
+                    </div>
+                </div>
+
+                <div class="form-row-2" id="videoRecordingOptions">
+                    <div class="form-group">
+                        <label>开始后延迟录制(秒)</label>
+                        <input type="number" id="recordingStartDelay" value="5" step="0.5" min="0" style="width: 150px;">
+                        <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                            音频开始播放后等待多少秒开始录制
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>结束前提前停止(秒)</label>
+                        <input type="number" id="recordingEndBeforeEnd" value="5" step="0.5" min="0" style="width: 150px;">
+                        <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                            音频结束前多少秒停止录制
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-header" style="margin-top: 20px;">
+                    <span class="section-title">文件配置</span>
+                </div>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label>文本文件路径</label>
+                        <input type="text" id="textFile" value="text.txt">
+                    </div>
+                    <div class="form-group">
+                        <label>输出目录</label>
+                        <input type="text" id="outputDir" value="output">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>文件名最大字符数</label>
+                    <input type="number" id="filenameMaxLength" value="30" style="width: 150px;">
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+                    <button class="btn btn-secondary" onclick="loadConfig()">重新加载</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">浙江数字生活-产品研发部</div>
+
+    <div class="dialog-overlay" id="appDialog" aria-hidden="true">
+        <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogMessage">
+            <div class="dialog-header" id="appDialogTitle">提示</div>
+            <div class="dialog-body" id="appDialogMessage"></div>
+            <div class="dialog-actions">
+                <button class="btn btn-primary" type="button" id="appDialogConfirm">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Wails 运行时
+        let texts = [];
+        let currentTemplate = [];
+        let activeDialogResolver = null;
+
+        function closeAppDialog() {
+            const dialog = document.getElementById('appDialog');
+            dialog.classList.remove('active');
+            dialog.setAttribute('aria-hidden', 'true');
+            const resolver = activeDialogResolver;
+            activeDialogResolver = null;
+            if (resolver) {
+                resolver();
+            }
+        }
+
+        function showAppDialog(message, title = '提示') {
+            const dialog = document.getElementById('appDialog');
+            document.getElementById('appDialogTitle').textContent = title;
+            document.getElementById('appDialogMessage').textContent = String(message ?? '');
+            dialog.classList.add('active');
+            dialog.setAttribute('aria-hidden', 'false');
+            const confirmButton = document.getElementById('appDialogConfirm');
+            confirmButton.focus();
+            return new Promise((resolve) => {
+                activeDialogResolver = resolve;
+            });
+        }
+
+        window.alert = (message) => showAppDialog(message);
+
+        // 模板编辑器函数
+        function renderTemplateEditor() {
+            const container = document.getElementById('templateEditor');
+            container.innerHTML = '';
+
+            currentTemplate.forEach((segment, index) => {
+                const isMain = segment.type === 'voice' && segment.text === '$MAIN';
+                const div = document.createElement('div');
+                div.className = `template-segment ${segment.type}${isMain ? ' main' : ''}`;
+
+                if (segment.type === 'voice') {
+                    div.innerHTML = `
+                        <span class="segment-type">语音</span>
+                        <input type="text" value="${segment.text}"
+                               onchange="updateTemplateSegment(${index}, 'text', this.value)"
+                               ${isMain ? 'readonly style="background: #fff3e0; font-weight: bold;"' : ''}>
+                        <div class="segment-actions">
+                            <button class="btn-move" onclick="moveTemplateSegment(${index}, -1)">↑</button>
+                            <button class="btn-move" onclick="moveTemplateSegment(${index}, 1)">↓</button>
+                            ${!isMain ? `<button class="btn-delete" onclick="deleteTemplateSegment(${index})">删除</button>` : ''}
+                        </div>
+                    `;
+                } else {
+                    div.innerHTML = `
+                        <span class="segment-type">静音</span>
+                        <input type="number" value="${segment.seconds}" step="0.5" min="0"
+                               onchange="updateTemplateSegment(${index}, 'seconds', parseFloat(this.value))">
+                        <span style="color: #666;">秒</span>
+                        <div class="segment-actions">
+                            <button class="btn-move" onclick="moveTemplateSegment(${index}, -1)">↑</button>
+                            <button class="btn-move" onclick="moveTemplateSegment(${index}, 1)">↓</button>
+                            <button class="btn-delete" onclick="deleteTemplateSegment(${index})">删除</button>
+                        </div>
+                    `;
+                }
+
+                container.appendChild(div);
+            });
+        }
+
+        function updateTemplateSegment(index, field, value) {
+            if (currentTemplate[index]) {
+                currentTemplate[index][field] = value;
+                updateAudioStructure();
+            }
+        }
+
+        function moveTemplateSegment(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= currentTemplate.length) return;
+
+            const temp = currentTemplate[index];
+            currentTemplate[index] = currentTemplate[newIndex];
+            currentTemplate[newIndex] = temp;
+            renderTemplateEditor();
+            updateAudioStructure();
+        }
+
+        function deleteTemplateSegment(index) {
+            // 不允许删除 $MAIN
+            if (currentTemplate[index]?.text === '$MAIN') return;
+            currentTemplate.splice(index, 1);
+            renderTemplateEditor();
+            updateAudioStructure();
+        }
+
+        function addTemplateSegment(type) {
+            if (type === 'voice') {
+                currentTemplate.push({ type: 'voice', text: '新语音' });
+            } else {
+                currentTemplate.push({ type: 'silence', seconds: 1 });
+            }
+            renderTemplateEditor();
+            updateAudioStructure();
+        }
+
+        // ===== 通用工具 =====
+        function perfFormatTime(ms) {
+            const d = new Date(ms);
+            const pad2 = n => String(n).padStart(2, '0');
+            const pad3 = n => String(n).padStart(3, '0');
+            return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${pad3(d.getMilliseconds())}`;
+        }
+
+        // 全局设备列表缓存
+        let globalDevices = [];
+
+        // ===== 设备管理相关 =====
+        let devSelectedApks = []; // 已选的 APK 文件路径
+
+        // 连接设备
+        async function devConnect() {
+            const ip = document.getElementById('devAdbIp').value.trim();
+            const status = document.getElementById('devStatus');
+            if (!ip) {
+                status.className = 'alert alert-error';
+                status.textContent = '请输入设备 IP 地址';
+                return;
+            }
+            status.className = 'alert alert-info';
+            status.textContent = '正在连接 ' + ip + '...';
+            try {
+                const result = await window.go.main.App.ConnectAdb(ip);
+                if (result.success) {
+                    status.className = 'alert alert-success';
+                    status.textContent = result.message;
+                    await devRefresh();
+                } else {
+                    status.className = 'alert alert-error';
+                    status.textContent = result.message;
+                }
+            } catch (e) {
+                status.className = 'alert alert-error';
+                status.textContent = '连接失败: ' + e;
+            }
+        }
+
+        // 刷新设备列表（设备管理 + 同步到其他 tab 的下拉框）
+        async function devRefresh() {
+            const status = document.getElementById('devStatus');
+            try {
+                globalDevices = await window.go.main.App.GetConnectedDevices() || [];
+                devRenderList();
+                devSyncCommandDeviceSelect();
+                perfSyncDeviceSelect();
+                playSyncDeviceSelect();
+                if (globalDevices.length > 0) {
+                    status.className = 'alert alert-success';
+                    status.textContent = '已发现 ' + globalDevices.length + ' 个设备';
+                } else {
+                    status.className = 'alert alert-info';
+                    status.textContent = '未发现任何设备';
+                }
+            } catch (e) {
+                status.className = 'alert alert-error';
+                status.textContent = '刷新失败: ' + e;
+            }
+        }
+
+        // 渲染设备列表
+        function devRenderList() {
+            const tbody = document.getElementById('devListBody');
+            if (globalDevices.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="padding:15px;text-align:center;color:#999;">暂无已连接设备</td></tr>';
+                return;
+            }
+            tbody.innerHTML = globalDevices.map((d, i) => `
+                <tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:8px 12px;"><input type="checkbox" class="dev-check" value="${d}" style="width:auto;"></td>
+                    <td style="padding:8px 12px;font-family:monospace;font-size:13px;">${d}</td>
+                    <td style="padding:8px 12px;text-align:center;">
+                        <button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="devDisconnectOne('${d}')">断开</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 全选/取消全选
+        function devToggleAll() {
+            const checked = document.getElementById('devSelectAll').checked;
+            document.querySelectorAll('.dev-check').forEach(cb => cb.checked = checked);
+        }
+
+        // 获取选中的设备列表
+        function devGetSelected() {
+            const checked = [];
+            document.querySelectorAll('.dev-check:checked').forEach(cb => checked.push(cb.value));
+            return checked;
+        }
+
+        // 断开单个设备
+        async function devDisconnectOne(serial) {
+            devAppendOutput('断开设备 ' + serial + '...', 'info');
+            try {
+                const r = await window.go.main.App.DisconnectDevice(serial);
+                devAppendOutput(r.message, r.success ? 'success' : 'error');
+            } catch (e) {
+                devAppendOutput('断开失败: ' + e, 'error');
+            }
+            await devRefresh();
+        }
+
+        // 断开选中设备
+        async function devDisconnectSelected() {
+            const selected = devGetSelected();
+            if (selected.length === 0) { alert('请先勾选要断开的设备'); return; }
+            for (const serial of selected) {
+                devAppendOutput('断开设备 ' + serial + '...', 'info');
+                try {
+                    const r = await window.go.main.App.DisconnectDevice(serial);
+                    devAppendOutput(r.message, r.success ? 'success' : 'error');
+                } catch (e) {
+                    devAppendOutput('断开失败: ' + e, 'error');
+                }
+            }
+            await devRefresh();
+        }
+
+        // 断开所有设备
+        async function devDisconnectAll() {
+            devAppendOutput('断开所有设备...', 'info');
+            try {
+                const r = await window.go.main.App.DisconnectAllDevices();
+                devAppendOutput(r.message, r.success ? 'success' : 'error');
+            } catch (e) {
+                devAppendOutput('断开失败: ' + e, 'error');
+            }
+            await devRefresh();
+        }
+
+        // 选择 APK 文件
+        async function devSelectApks() {
+            try {
+                const files = await window.go.main.App.SelectApkFiles();
+                if (files && files.length > 0) {
+                    devSelectedApks = files;
+                    devRenderApkList();
+                    devAppendOutput('已选择 ' + files.length + ' 个 APK 文件', 'info');
+                }
+            } catch (e) {
+                devAppendOutput('选择文件失败: ' + e, 'error');
+            }
+        }
+
+        // 渲染已选 APK 列表
+        function devRenderApkList() {
+            const container = document.getElementById('devApkList');
+            if (devSelectedApks.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            container.innerHTML = devSelectedApks.map((f, i) => {
+                const name = f.split(/[/\\]/).pop();
+                return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:4px;background:#f8f9fa;border-radius:6px;font-size:13px;">
+                    <span style="flex:1;font-family:monospace;">${name}</span>
+                    <button style="border:none;background:#dc3545;color:white;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px;" onclick="devRemoveApk(${i})">移除</button>
+                </div>`;
+            }).join('');
+        }
+
+        // 移除某个 APK
+        function devRemoveApk(index) {
+            devSelectedApks.splice(index, 1);
+            devRenderApkList();
+        }
+
+        // 安装 APK 到选中设备
+        async function devInstallApks() {
+            const selected = devGetSelected();
+            if (selected.length === 0) { alert('请先勾选目标设备'); return; }
+            if (devSelectedApks.length === 0) { alert('请先选择 APK 文件'); return; }
+
+            const btn = document.getElementById('devInstallBtn');
+            const statusEl = document.getElementById('devInstallStatus');
+            btn.disabled = true;
+            btn.textContent = '安装中...';
+
+            const total = selected.length * devSelectedApks.length;
+            let done = 0;
+            let successCount = 0;
+
+            for (const serial of selected) {
+                for (const apk of devSelectedApks) {
+                    const apkName = apk.split(/[/\\]/).pop();
+                    statusEl.textContent = `正在安装 ${apkName} 到 ${serial}... (${done + 1}/${total})`;
+                    devAppendOutput(`安装 ${apkName} 到 ${serial}...`, 'info');
+                    try {
+                        const r = await window.go.main.App.InstallApk(serial, apk);
+                        if (r.success) {
+                            devAppendOutput(`${serial}: ${apkName} 安装成功`, 'success');
+                            successCount++;
+                        } else {
+                            devAppendOutput(`${serial}: ${apkName} 安装失败 - ${r.message}`, 'error');
+                        }
+                    } catch (e) {
+                        devAppendOutput(`${serial}: ${apkName} 安装异常 - ${e}`, 'error');
+                    }
+                    done++;
+                }
+            }
+
+            statusEl.textContent = `安装完成：${successCount}/${total} 成功`;
+            btn.disabled = false;
+            btn.textContent = '安装到选中设备';
+        }
+
+        // 设备管理输出控制台
+        function devAppendOutput(message, type) {
+            const outputConsole = document.getElementById('devOutput');
+            outputConsole.classList.add('active');
+            const line = document.createElement('div');
+            line.className = 'line';
+            if (type === 'error') line.classList.add('error');
+            else if (type === 'success') line.classList.add('success');
+            else if (type === 'info') line.classList.add('info');
+            line.textContent = '[' + perfFormatTime(Date.now()) + '] ' + message;
+            outputConsole.appendChild(line);
+            outputConsole.scrollTop = outputConsole.scrollHeight;
+        }
+
+        // ===== 启动时间测试相关 =====
+        function devSyncCommandDeviceSelect() {
+            const select = document.getElementById('devCommandDevice');
+            const prev = select.value;
+            select.innerHTML = '<option value="">-- 不指定，由命令自行决定 --</option>';
+            globalDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device;
+                option.textContent = device;
+                select.appendChild(option);
+            });
+            if (prev && globalDevices.includes(prev)) {
+                select.value = prev;
+            }
+        }
+
+        function devFillCommand(command) {
+            document.getElementById('devCommandInput').value = command;
+        }
+
+        async function devRunCommand() {
+            const serial = document.getElementById('devCommandDevice').value;
+            const input = document.getElementById('devCommandInput');
+            const statusEl = document.getElementById('devCommandStatus');
+            const btn = document.getElementById('devRunCommandBtn');
+            const command = input.value.trim();
+
+            if (!command) {
+                alert('请输入要执行的 ADB 命令');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = '执行中...';
+            statusEl.textContent = '正在执行命令...';
+
+            try {
+                const result = await window.go.main.App.RunAdbCommand(serial, command);
+                devAppendCommandOutput('$ ' + (result.command || ('adb ' + command)), 'info');
+                if (result.output) {
+                    result.output.split(/\r?\n/).forEach(line => {
+                        if (line.trim() !== '') {
+                            devAppendCommandOutput(line, result.success ? 'normal' : 'error');
+                        }
+                    });
+                }
+                statusEl.textContent = result.message;
+                if (!result.success) {
+                    devAppendCommandOutput(result.message, 'error');
+                }
+            } catch (e) {
+                statusEl.textContent = '命令执行失败';
+                devAppendCommandOutput('执行异常: ' + e, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '执行命令';
+            }
+        }
+
+        function devAppendCommandOutput(message, type) {
+            const outputConsole = document.getElementById('devCommandOutput');
+            outputConsole.classList.add('active');
+            const line = document.createElement('div');
+            line.className = 'line';
+            if (type === 'error') line.classList.add('error');
+            else if (type === 'success') line.classList.add('success');
+            else if (type === 'info') line.classList.add('info');
+            line.textContent = '[' + perfFormatTime(Date.now()) + '] ' + message;
+            outputConsole.appendChild(line);
+            outputConsole.scrollTop = outputConsole.scrollHeight;
+        }
+
+        let perfAllPackages = [];
+        let perfRecords = [];
+        let perfTimerRunning = false;
+        let perfStartMs = 0;
+        let perfCurrentLaunch = null;
+        let perfLastResultDir = '';
+
+        // 默认包名列表
+        const perfDefaultPkgs = ['zjiptv.mds', 'com.telecom.video'];
+        // 默认 component 映射
+        const perfDefaultComponents = {
+            'zjiptv.mds': 'zjiptv.mds/yanhua.tv.app.module.main.MainActivity',
+            'com.telecom.video': 'com.telecom.video/.activity.MainActivity'
+        };
+
+        // 同步设备下拉框（从全局设备列表）
+        function perfSyncDeviceSelect() {
+            const select = document.getElementById('perfDeviceSelect');
+            const prev = select.value;
+            select.innerHTML = '';
+            if (globalDevices.length === 0) {
+                select.innerHTML = '<option value="">-- 请先在"设备管理"中连接设备 --</option>';
+                return;
+            }
+            globalDevices.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = d;
+                select.appendChild(opt);
+            });
+            if (prev && globalDevices.includes(prev)) select.value = prev;
+        }
+
+        function updatePlayDeviceStatus(serial) {
+            const status = document.getElementById('playDeviceStatus');
+            if (!status) return;
+            if (serial) {
+                status.textContent = '当前播放设备: ' + serial;
+                status.className = 'alert alert-success';
+            } else if (globalDevices.length === 1) {
+                status.textContent = '当前播放设备: ' + globalDevices[0];
+                status.className = 'alert alert-success';
+            } else {
+                status.textContent = '当前播放设备: 未选择';
+                status.className = 'alert alert-info';
+            }
+        }
+
+        async function onPlayDeviceChange() {
+            const select = document.getElementById('playDeviceSelect');
+            const serial = select ? select.value : '';
+            await window.go.main.App.SetPlayDevice(serial);
+            updatePlayDeviceStatus(serial);
+        }
+
+        function playSyncDeviceSelect() {
+            const select = document.getElementById('playDeviceSelect');
+            if (!select) return;
+            const prev = select.value;
+            select.innerHTML = '';
+            if (globalDevices.length === 0) {
+                select.innerHTML = '<option value="">-- 请先连接设备 --</option>';
+                onPlayDeviceChange();
+                return;
+            }
+            globalDevices.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = d;
+                select.appendChild(opt);
+            });
+            if (prev && globalDevices.includes(prev)) {
+                select.value = prev;
+            } else if (globalDevices.length === 1) {
+                select.value = globalDevices[0];
+            }
+            onPlayDeviceChange();
+        }
+
+        // 刷新设备（启动时间测试 tab 的刷新按钮）
+        async function perfRefreshDevices() {
+            await devRefresh();
+        }
+
+        let perfShowingAll = false; // 是否已展开全部包列表
+
+        // 列出全部包（展开模式）
+        async function perfLoadAllPackages() {
+            const serial = document.getElementById('perfDeviceSelect').value;
+            if (!serial) { alert('请先选择设备'); return; }
+
+            const pkgSelect = document.getElementById('perfPkgSelect');
+            pkgSelect.innerHTML = '<option>加载中...</option>';
+            pkgSelect.size = 10;
+            try {
+                perfAllPackages = await window.go.main.App.GetDevicePackages(serial);
+                perfRenderPackages(perfAllPackages);
+                perfShowingAll = true;
+                document.getElementById('perfPkgSearchArea').style.display = 'block';
+                perfAppendOutput('已列出 ' + perfAllPackages.length + ' 个包', 'info');
+            } catch (e) {
+                perfResetPkgList();
+                perfAppendOutput('加载包列表失败: ' + e, 'error');
+            }
+        }
+
+        // 渲染包名列表（全部包模式）
+        function perfRenderPackages(pkgs) {
+            const pkgSelect = document.getElementById('perfPkgSelect');
+            pkgSelect.innerHTML = '';
+            pkgs.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                pkgSelect.appendChild(opt);
+            });
+        }
+
+        // 收起全部包列表，恢复默认
+        function perfHideAllPackages() {
+            perfShowingAll = false;
+            perfResetPkgList();
+            document.getElementById('perfPkgSearchArea').style.display = 'none';
+            document.getElementById('perfPkgSearch').value = '';
+        }
+
+        // 重置包列表为默认
+        function perfResetPkgList() {
+            const pkgSelect = document.getElementById('perfPkgSelect');
+            pkgSelect.size = 4;
+            pkgSelect.innerHTML = '';
+            perfDefaultPkgs.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                pkgSelect.appendChild(opt);
+            });
+            const otherOpt = document.createElement('option');
+            otherOpt.value = '__other__';
+            otherOpt.textContent = '-- 其它（点击列出全部）--';
+            otherOpt.style.color = '#2d4f95';
+            pkgSelect.appendChild(otherOpt);
+        }
+
+        // 包名搜索过滤
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchInput = document.getElementById('perfPkgSearch');
+            if (searchInput) {
+                searchInput.addEventListener('input', () => {
+                    if (!perfShowingAll) return;
+                    const query = searchInput.value.trim().toLowerCase();
+                    if (!query) {
+                        perfRenderPackages(perfAllPackages);
+                    } else {
+                        perfRenderPackages(perfAllPackages.filter(p => p.toLowerCase().includes(query)));
+                    }
+                });
+            }
+        });
+
+        // 选择包名时处理
+        function perfOnPkgSelect() {
+            const pkgSelect = document.getElementById('perfPkgSelect');
+            const pkg = pkgSelect.value;
+
+            // 点击 "其它" 展开全部
+            if (pkg === '__other__') {
+                perfLoadAllPackages();
+                return;
+            }
+
+            if (pkg) {
+                // 如果有默认 component 映射，自动填充
+                if (perfDefaultComponents[pkg]) {
+                    document.getElementById('perfComponent').value = perfDefaultComponents[pkg];
+                    document.getElementById('perfComponentSelect').value = perfDefaultComponents[pkg];
+                } else {
+                    const compInput = document.getElementById('perfComponent');
+                    if (!compInput.value || !compInput.value.startsWith(pkg)) {
+                        compInput.value = pkg + '/';
+                    }
+                    document.getElementById('perfComponentSelect').value = '';
+                }
+            }
+        }
+
+        // Component 下拉选择
+        function perfOnComponentSelect() {
+            const val = document.getElementById('perfComponentSelect').value;
+            if (val) {
+                document.getElementById('perfComponent').value = val;
+            }
+        }
+
+        // 获取当前选择的 serial 和 component
+        function perfGetParams() {
+            const serial = document.getElementById('perfDeviceSelect').value;
+            const component = document.getElementById('perfComponent').value.trim();
+            if (!serial) { alert('请先选择设备'); return null; }
+            if (!component || !component.includes('/')) { alert('请输入完整的 Component 名称（包名/Activity名）'); return null; }
+            return { serial, component, packageName: component.split('/')[0] };
+        }
+
+        function perfGetSelectedPackageName() {
+            const component = document.getElementById('perfComponent').value.trim();
+            if (component && component.includes('/')) {
+                return component.split('/')[0];
+            }
+            const pkgSelect = document.getElementById('perfPkgSelect');
+            const pkg = pkgSelect ? pkgSelect.value : '';
+            if (pkg && pkg !== '__other__') {
+                return pkg;
+            }
+            return '';
+        }
+
+        async function perfRunControlCommands() {
+            const serial = document.getElementById('perfDeviceSelect').value;
+            if (!serial) { alert('请先选择设备'); return; }
+
+            const opts = {
+                forceStop: document.getElementById('perfCmdForceStop').checked,
+                clearData: document.getElementById('perfCmdClearData').checked,
+                back: document.getElementById('perfCmdBack').checked
+            };
+            if (!opts.forceStop && !opts.clearData && !opts.back) {
+                alert('请至少选择一个命令');
+                return;
+            }
+
+            const packageName = perfGetSelectedPackageName();
+            if ((opts.forceStop || opts.clearData) && !packageName) {
+                alert('force-stop / pm clear 需要先选择应用包名或填写完整 Component');
+                return;
+            }
+
+            const btn = document.getElementById('perfControlRunBtn');
+            btn.disabled = true;
+            btn.textContent = '执行中...';
+            if (opts.forceStop) perfAppendOutput('执行 am force-stop ' + packageName, 'info');
+            if (opts.clearData) perfAppendOutput('执行 pm clear ' + packageName, 'info');
+            if (opts.back) perfAppendOutput('执行 input keyevent BACK x2', 'info');
+
+            try {
+                const result = await window.go.main.App.PerfRunControlCommands(serial, packageName, opts);
+                if (result.success) {
+                    perfAppendOutput(result.message, 'success');
+                } else {
+                    perfAppendOutput('失败: ' + result.message, 'error');
+                }
+            } catch (e) {
+                perfAppendOutput('执行失败: ' + e, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '执行';
+            }
+        }
+
+        // 强制停止并清除数据（force-stop + pm clear）
+        async function perfForceStop() {
+            const params = perfGetParams();
+            if (!params) return;
+
+            const btn = document.getElementById('perfForceStopBtn');
+            btn.disabled = true;
+            btn.textContent = '执行中...';
+            perfAppendOutput('执行 force-stop ' + params.packageName, 'info');
+            perfAppendOutput('执行 pm clear ' + params.packageName, 'info');
+
+            try {
+                const result = await window.go.main.App.PerfPrepColdStart(params.serial, params.packageName);
+                if (result.success) {
+                    perfAppendOutput(result.message, 'success');
+                } else {
+                    perfAppendOutput('失败: ' + result.message, 'error');
+                }
+            } catch (e) {
+                perfAppendOutput('执行失败: ' + e, 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = '强制停止并清除数据';
+        }
+
+        // 停止所有应用（包括前台正在运行的）
+        async function perfKillAllApps() {
+            const serial = document.getElementById('perfDeviceSelect').value;
+            if (!serial) { alert('请先选择设备'); return; }
+
+            const btn = document.getElementById('perfKillAllBtn');
+            btn.disabled = true;
+            btn.textContent = '停止中...';
+            perfAppendOutput('正在停止所有第三方应用（含前台）...', 'info');
+
+            try {
+                const result = await window.go.main.App.PerfForceStopAll(serial);
+                if (result.success) {
+                    perfAppendOutput(result.message, 'success');
+                } else {
+                    perfAppendOutput('失败: ' + result.message, 'error');
+                }
+            } catch (e) {
+                perfAppendOutput('执行失败: ' + e, 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = '停止所有应用';
+        }
+
+        // 回到首页（按两次返回键）
+        async function perfGoHome() {
+            const serial = document.getElementById('perfDeviceSelect').value;
+            if (!serial) { alert('请先选择设备'); return; }
+
+            const btn = document.getElementById('perfGoHomeBtn');
+            btn.disabled = true;
+            perfAppendOutput('按两次返回键...', 'info');
+
+            try {
+                const result = await window.go.main.App.PerfGoHome(serial);
+                if (result.success) {
+                    perfAppendOutput(result.message, 'success');
+                } else {
+                    perfAppendOutput('失败: ' + result.message, 'error');
+                }
+            } catch (e) {
+                perfAppendOutput('执行失败: ' + e, 'error');
+            }
+
+            btn.disabled = false;
+        }
+
+        // 启动计时
+        async function perfStartTimer() {
+            const params = perfGetParams();
+            if (!params) return;
+
+            const startBtn = document.getElementById('perfStartBtn');
+            const stopBtn = document.getElementById('perfStopBtn');
+            const statusText = document.getElementById('perfStatusText');
+            const opts = {
+                enabled: document.getElementById('perfettoEnabled').checked,
+                maxDurationSeconds: parseInt(document.getElementById('perfettoMaxDuration').value || '30', 10),
+                bufferSizeMB: parseInt(document.getElementById('perfettoBufferSize').value || '64', 10)
+            };
+
+            startBtn.disabled = true;
+
+            // 记录开始时间并启动 Activity
+            perfStartMs = Date.now();
+            perfTimerRunning = true;
+            perfCurrentLaunch = null;
+            perfRenderCapability(null);
+            stopBtn.disabled = true;
+            const startTimeStr = perfFormatTime(perfStartMs);
+            statusText.textContent = '计时中... 开始时间: ' + startTimeStr;
+            perfAppendOutput('开始时间: ' + startTimeStr, 'info');
+            if (opts.enabled) {
+                perfAppendOutput('启动 Perfetto，最大采集时长 ' + opts.maxDurationSeconds + ' 秒，Buffer ' + opts.bufferSizeMB + ' MB', 'info');
+            }
+            perfAppendOutput('执行 am start -W -n ' + params.component, 'info');
+
+            try {
+                const result = await window.go.main.App.PerfStartLaunchTrace(params.serial, params.component, opts);
+                perfCurrentLaunch = result;
+                if (perfTimerRunning) {
+                    stopBtn.disabled = false;
+                }
+                if (result.resultDir) {
+                    perfLastResultDir = result.resultDir;
+                    document.getElementById('perfOpenResultBtn').disabled = false;
+                }
+                perfAppendOutput('am start 输出:\n' + result.output, result.success ? 'success' : 'error');
+                perfAppendOutput('ThisTime=' + result.thisTimeMs + ' ms, TotalTime=' + result.totalTimeMs + ' ms, WaitTime=' + result.waitTimeMs + ' ms', result.success ? 'success' : 'error');
+                perfAppendOutput('TotalTime/WaitTime 仅测量从 Activity.onCreate() 到 onResume() + 首帧绘制完成', 'info');
+                perfAppendOutput('以下耗时不包含在内：', 'info');
+                perfAppendOutput('  - 渲染 WebView/H5 页面', 'info');
+                perfAppendOutput('  - 初始化 SDK、拉取配置', 'info');
+                perfAppendOutput('  - 播放开屏广告/动画', 'info');
+                perfAppendOutput('命令发出时间(Go): ' + result.timestamp, 'info');
+                if (result.resultDir) {
+                    perfAppendOutput('结果目录: ' + result.resultDir, 'info');
+                }
+                perfAppendCapability(result.capability);
+                if (!result.success && !result.traceEnabled) {
+                    perfTimerRunning = false;
+                    stopBtn.disabled = true;
+                    startBtn.disabled = false;
+                }
+            } catch (e) {
+                perfAppendOutput('启动失败: ' + e, 'error');
+                perfTimerRunning = false;
+                stopBtn.disabled = true;
+                startBtn.disabled = false;
+            }
+
+            if (!perfTimerRunning) {
+                startBtn.disabled = false;
+            }
+        }
+
+        // 停止计时
+        async function perfStopTimer() {
+            if (!perfTimerRunning) return;
+            perfTimerRunning = false;
+
+            const stopMs = Date.now();
+            const stopTimeStr = perfFormatTime(stopMs);
+            const duration = stopMs - perfStartMs;
+
+            document.getElementById('perfStatusText').textContent =
+                '耗时: ' + duration + ' ms | 停止时间: ' + stopTimeStr;
+            document.getElementById('perfStopBtn').disabled = true;
+
+            perfAppendOutput('停止时间: ' + stopTimeStr, 'info');
+            perfAppendOutput('耗时: ' + duration + ' ms', 'success');
+
+            const stopBtn = document.getElementById('perfStopBtn');
+            const startBtn = document.getElementById('perfStartBtn');
+            stopBtn.disabled = true;
+
+            let stopResult = null;
+            try {
+                perfAppendOutput('正在停止 Perfetto 并拉取 trace...', 'info');
+                stopResult = await window.go.main.App.PerfStopLaunchTrace();
+                if (stopResult.resultDir) {
+                    perfLastResultDir = stopResult.resultDir;
+                    document.getElementById('perfOpenResultBtn').disabled = false;
+                }
+                if (stopResult.traceFile) {
+                    perfAppendOutput('Trace 文件: ' + stopResult.traceFile, stopResult.success ? 'success' : 'error');
+                }
+                if (stopResult.traceSizeBytes) {
+                    perfAppendOutput('Trace 大小: ' + stopResult.traceSizeBytes + ' bytes', stopResult.traceAnalyzable ? 'success' : 'error');
+                }
+                if (stopResult.traceWarning) {
+                    perfAppendOutput(stopResult.traceWarning, 'error');
+                }
+                perfAppendStopArtifacts(stopResult);
+                perfAppendCapability(stopResult.capability);
+                perfAppendOutput(stopResult.message, stopResult.success ? 'success' : 'error');
+            } catch (e) {
+                perfAppendOutput('停止 Perfetto 失败: ' + e, 'error');
+            }
+
+            perfRecords.push({
+                startTime: perfStartMs,
+                stopTime: stopMs,
+                duration: duration,
+                thisTimeMs: perfCurrentLaunch ? perfCurrentLaunch.thisTimeMs : 0,
+                totalTimeMs: perfCurrentLaunch ? perfCurrentLaunch.totalTimeMs : 0,
+                waitTimeMs: perfCurrentLaunch ? perfCurrentLaunch.waitTimeMs : 0,
+                traceFile: stopResult ? stopResult.traceFile : '',
+                logcatFile: stopResult ? stopResult.logcatFile : '',
+                reportFile: stopResult ? stopResult.reportFile : '',
+                timelineFile: stopResult ? stopResult.timelineFile : '',
+                traceSizeBytes: stopResult ? stopResult.traceSizeBytes : 0,
+                traceAnalyzable: stopResult ? stopResult.traceAnalyzable : false,
+                traceWarning: stopResult ? stopResult.traceWarning : '',
+                resultDir: stopResult ? stopResult.resultDir : (perfCurrentLaunch ? perfCurrentLaunch.resultDir : '')
+            });
+            perfRenderRecords();
+            perfCurrentLaunch = null;
+            startBtn.disabled = false;
+        }
+
+        async function perfRunBatch() {
+            if (perfTimerRunning) {
+                alert('当前单次启动计时仍在运行，请先停止');
+                return;
+            }
+            const params = perfGetParams();
+            if (!params) return;
+
+            const batchBtn = document.getElementById('perfBatchBtn');
+            const startBtn = document.getElementById('perfStartBtn');
+            const stopBtn = document.getElementById('perfStopBtn');
+            const statusText = document.getElementById('perfStatusText');
+            const opts = {
+                count: parseInt(document.getElementById('perfBatchCount').value || '5', 10),
+                intervalSeconds: parseInt(document.getElementById('perfBatchInterval').value || '3', 10),
+                postLaunchCaptureSeconds: parseInt(document.getElementById('perfBatchPostCapture').value || '5', 10),
+                clearData: document.getElementById('perfBatchClearData').checked,
+                forceStop: document.getElementById('perfBatchForceStop').checked,
+                perfetto: {
+                    enabled: document.getElementById('perfettoEnabled').checked,
+                    maxDurationSeconds: parseInt(document.getElementById('perfettoMaxDuration').value || '30', 10),
+                    bufferSizeMB: parseInt(document.getElementById('perfettoBufferSize').value || '64', 10)
+                }
+            };
+
+            batchBtn.disabled = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = true;
+            statusText.textContent = '批量启动测试中...';
+            perfRenderCapability(null);
+            perfAppendOutput('开始批量启动测试：' + opts.count + ' 次，component=' + params.component, 'info');
+            perfAppendOutput('批量参数：间隔 ' + opts.intervalSeconds + ' 秒，启动后采集 ' + opts.postLaunchCaptureSeconds + ' 秒，pm clear=' + opts.clearData + ', force-stop=' + opts.forceStop, 'info');
+
+            try {
+                const result = await window.go.main.App.PerfRunLaunchBatch(params.serial, params.component, opts);
+                if (result.resultDir) {
+                    perfLastResultDir = result.resultDir;
+                    document.getElementById('perfOpenResultBtn').disabled = false;
+                    perfAppendOutput('批量结果目录: ' + result.resultDir, 'info');
+                }
+                if (result.runs && result.runs.length) {
+                    result.runs.forEach((run, idx) => {
+                        perfRecords.push(perfRecordFromRun(run));
+                        perfAppendOutput('第 ' + (idx + 1) + ' 轮: TotalTime=' + (run.totalTimeMs || '-') + ' ms, WaitTime=' + (run.waitTimeMs || '-') + ' ms, ' + (run.success ? '成功' : '失败'), run.success ? 'success' : 'error');
+                        if (run.reportFile) perfAppendOutput('第 ' + (idx + 1) + ' 轮报告: ' + run.reportFile, 'info');
+                    });
+                    const lastRun = result.runs[result.runs.length - 1];
+                    if (lastRun && lastRun.capability) {
+                        perfAppendCapability(lastRun.capability);
+                    }
+                    perfRenderRecords();
+                    perfCalcStats();
+                }
+                const summary = '批量完成: ' + result.successes + '/' + result.count + ' 成功，平均 TotalTime=' + (result.meanTotalMs || 0).toFixed(2) + ' ms，标准方差=' + (result.stdTotalMs || 0).toFixed(2) + ' ms';
+                statusText.textContent = summary;
+                perfAppendOutput(summary, result.success ? 'success' : 'error');
+                if (!result.success && result.message) {
+                    perfAppendOutput(result.message, 'error');
+                }
+            } catch (e) {
+                statusText.textContent = '批量启动测试失败';
+                perfAppendOutput('批量启动测试失败: ' + e, 'error');
+            } finally {
+                batchBtn.disabled = false;
+                startBtn.disabled = false;
+            }
+        }
+
+        function perfRecordFromRun(run) {
+            const startMs = perfParseGoTime(run.timestamp) || Date.now();
+            const stopMs = perfParseGoTime(run.stoppedAt) || (startMs + (run.manualDurationMs || 0));
+            return {
+                startTime: startMs,
+                stopTime: stopMs,
+                duration: run.manualDurationMs || Math.max(0, stopMs - startMs),
+                thisTimeMs: run.thisTimeMs || 0,
+                totalTimeMs: run.totalTimeMs || 0,
+                waitTimeMs: run.waitTimeMs || 0,
+                traceFile: run.traceFile || '',
+                logcatFile: run.logcatFile || '',
+                reportFile: run.reportFile || '',
+                timelineFile: run.timelineFile || '',
+                traceSizeBytes: run.traceSizeBytes || 0,
+                traceAnalyzable: !!run.traceAnalyzable,
+                traceWarning: run.traceWarning || '',
+                resultDir: run.resultDir || ''
+            };
+        }
+
+        function perfParseGoTime(value) {
+            if (!value) return 0;
+            const normalized = String(value).replace(' ', 'T');
+            const ms = Date.parse(normalized);
+            return Number.isFinite(ms) ? ms : 0;
+        }
+
+        function perfAppendCapability(capability) {
+            if (!capability) return;
+            perfRenderCapability(capability);
+            perfAppendOutput('Perfetto 能力检测:', 'info');
+            perfAppendOutput('  - perfetto 命令: ' + (capability.perfettoCommandFound ? '存在' : '不存在') + (capability.perfettoPath ? ' (' + capability.perfettoPath + ')' : ''), capability.perfettoCommandFound ? 'success' : 'error');
+            perfAppendOutput('  - --background-wait: ' + (capability.supportsBackgroundWait ? '支持' : '不支持'), capability.supportsBackgroundWait ? 'success' : 'info');
+            perfAppendOutput('  - 文本配置 --txt: ' + (capability.supportsTextConfig ? '支持' : '不支持'), capability.supportsTextConfig ? 'success' : 'info');
+            perfAppendOutput('  - atrace categories: ' + (capability.atraceListOk ? '可用' : '不可用'), capability.atraceListOk ? 'success' : 'error');
+            if (capability.atraceError) {
+                perfAppendOutput('    ' + capability.atraceError, 'error');
+            }
+            perfAppendOutput('  - tracefs: ' + (capability.tracefsReadable ? capability.tracefsPath : '不可读') + (capability.tracefsReadable ? (capability.tracefsHasEntries ? '，有事件节点' : '，目录为空') : ''), capability.tracefsHasEntries ? 'success' : 'error');
+            perfAppendOutput('  - kernel trace: ' + (capability.analyzableKernelTraceLikely ? '预计可分析' : '预计不可分析'), capability.analyzableKernelTraceLikely ? 'success' : 'error');
+            if (capability.warning) {
+                perfAppendOutput('    ' + capability.warning, 'error');
+            }
+        }
+
+        function perfAppendStopArtifacts(result) {
+            if (!result) return;
+            if (result.logcatFile) {
+                perfAppendOutput('Logcat 文件: ' + result.logcatFile, 'info');
+            }
+            if (result.reportFile) {
+                perfAppendOutput('报告文件: ' + result.reportFile, 'info');
+            }
+            if (result.timelineFile) {
+                perfAppendOutput('timeline 文件: ' + result.timelineFile, 'info');
+            }
+        }
+
+        function perfSetCapabilityCell(valueId, detailId, value, state, detail) {
+            const valueEl = document.getElementById(valueId);
+            const detailEl = document.getElementById(detailId);
+            if (!valueEl || !detailEl) return;
+            valueEl.textContent = value;
+            valueEl.className = 'perf-capability-value ' + state;
+            detailEl.textContent = detail || '';
+        }
+
+        function perfRenderCapability(capability) {
+            const panel = document.getElementById('perfCapabilityPanel');
+            const summary = document.getElementById('perfCapabilitySummary');
+            if (!panel || !summary) return;
+
+            if (!capability) {
+                panel.classList.remove('active');
+                summary.textContent = '未检测';
+                perfSetCapabilityCell('perfCapCommand', 'perfCapCommandDetail', '未检测', '', '');
+                perfSetCapabilityCell('perfCapAtrace', 'perfCapAtraceDetail', '未检测', '', '');
+                perfSetCapabilityCell('perfCapTracefs', 'perfCapTracefsDetail', '未检测', '', '');
+                perfSetCapabilityCell('perfCapKernel', 'perfCapKernelDetail', '未检测', '', '');
+                return;
+            }
+
+            panel.classList.add('active');
+
+            const commandOk = !!capability.perfettoCommandFound;
+            const atraceOk = !!capability.atraceListOk;
+            const tracefsReadable = !!capability.tracefsReadable;
+            const tracefsOk = tracefsReadable && !!capability.tracefsHasEntries;
+            const kernelOk = !!capability.analyzableKernelTraceLikely;
+            const usableCount = [commandOk, atraceOk, tracefsOk, kernelOk].filter(Boolean).length;
+            summary.textContent = usableCount + '/4 可用' + (capability.warning ? '，存在告警' : '');
+            summary.className = 'perf-capability-summary ' + (kernelOk ? 'perf-state-ok' : 'perf-state-bad');
+
+            perfSetCapabilityCell(
+                'perfCapCommand',
+                'perfCapCommandDetail',
+                commandOk ? '存在' : '不存在',
+                commandOk ? 'perf-state-ok' : 'perf-state-bad',
+                (capability.perfettoPath || '') + (capability.supportsBackgroundWait ? ' --background-wait' : '') + (capability.supportsTextConfig ? ' --txt' : '')
+            );
+            perfSetCapabilityCell(
+                'perfCapAtrace',
+                'perfCapAtraceDetail',
+                atraceOk ? '可用' : '不可用',
+                atraceOk ? 'perf-state-ok' : 'perf-state-bad',
+                capability.atraceError || ''
+            );
+            perfSetCapabilityCell(
+                'perfCapTracefs',
+                'perfCapTracefsDetail',
+                tracefsOk ? '可分析' : (tracefsReadable ? '可读但无事件节点' : '不可读'),
+                tracefsOk ? 'perf-state-ok' : (tracefsReadable ? 'perf-state-warn' : 'perf-state-bad'),
+                capability.tracefsPath || ''
+            );
+            perfSetCapabilityCell(
+                'perfCapKernel',
+                'perfCapKernelDetail',
+                kernelOk ? '预计可分析' : '预计不可分析',
+                kernelOk ? 'perf-state-ok' : 'perf-state-bad',
+                capability.warning || ''
+            );
+        }
+
+        function perfEscapeHtml(value) {
+            return String(value || '').replace(/[&<>"']/g, ch => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[ch]));
+        }
+
+        function perfTraceCellHtml(record) {
+            if (!record.traceFile) {
+                return '-';
+            }
+            const sizeText = record.traceSizeBytes ? ' (' + record.traceSizeBytes + ' bytes)' : '';
+            if (record.traceAnalyzable) {
+                return '<span class="perf-state-ok">可分析' + sizeText + '</span>';
+            }
+            const warning = record.traceWarning ? '<span class="perf-trace-warning">' + perfEscapeHtml(record.traceWarning) + '</span>' : '';
+            return '<span class="perf-state-bad">不可分析' + sizeText + '</span>' + warning;
+        }
+
+        // 渲染测试记录
+        function perfRenderRecords() {
+            const tbody = document.getElementById('perfRecordsBody');
+            if (perfRecords.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="padding:15px;text-align:center;color:#999;">暂无记录</td></tr>';
+                return;
+            }
+            tbody.innerHTML = perfRecords.map((r, i) => {
+                return `<tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:8px 10px;">${i + 1}</td>
+                    <td style="padding:8px 10px;font-size:12px;font-family:monospace;">${perfFormatTime(r.startTime)}</td>
+                    <td style="padding:8px 10px;font-size:12px;font-family:monospace;">${perfFormatTime(r.stopTime)}</td>
+                    <td style="padding:8px 10px;text-align:right;font-weight:600;">${r.duration}</td>
+                    <td style="padding:8px 10px;text-align:right;">${r.thisTimeMs || '-'}</td>
+                    <td style="padding:8px 10px;text-align:right;font-weight:600;">${r.totalTimeMs || '-'}</td>
+                    <td style="padding:8px 10px;text-align:right;">${r.waitTimeMs || '-'}</td>
+                    <td style="padding:8px 10px;font-size:12px;">${perfTraceCellHtml(r)}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // 计算平均值和标准方差
+        function perfCalcStats() {
+            if (perfRecords.length === 0) {
+                alert('暂无测试记录');
+                return;
+            }
+
+            const durations = perfRecords.map(r => r.totalTimeMs || r.duration);
+            const mean = durations.reduce((a, b) => a + b, 0) / durations.length;
+            const variance = durations.reduce((sum, d) => sum + Math.pow(d - mean, 2), 0) / durations.length;
+            const std = Math.sqrt(variance);
+
+            const html = `共 <b>${perfRecords.length}</b> 次测试，按 TotalTime 优先统计，平均 <b>${mean.toFixed(2)}</b> ms，标准方差 <b>${std.toFixed(2)}</b> ms`;
+
+            document.getElementById('perfStatsArea').style.display = 'block';
+            document.getElementById('perfStatsText').innerHTML = html;
+        }
+
+        // 清除数据
+        function perfClearRecords() {
+            perfRecords = [];
+            perfCurrentLaunch = null;
+            perfRenderRecords();
+            document.getElementById('perfStatsArea').style.display = 'none';
+            document.getElementById('perfStatusText').textContent = '';
+            perfAppendOutput('测试记录已清除', 'info');
+        }
+
+        async function perfOpenResultDir() {
+            if (!perfLastResultDir) {
+                alert('暂无结果目录');
+                return;
+            }
+            try {
+                await window.go.main.App.OpenDirectory(perfLastResultDir);
+            } catch (e) {
+                perfAppendOutput('打开结果目录失败: ' + e, 'error');
+            }
+        }
+
+        // 输出控制台
+        function perfAppendOutput(message, type) {
+            const outputConsole = document.getElementById('perfOutput');
+            outputConsole.classList.add('active');
+            const line = document.createElement('div');
+            line.className = 'line';
+            if (type === 'error') line.classList.add('error');
+            else if (type === 'success') line.classList.add('success');
+            else if (type === 'info') line.classList.add('info');
+            line.textContent = '[' + perfFormatTime(Date.now()) + '] ' + message;
+            outputConsole.appendChild(line);
+            outputConsole.scrollTop = outputConsole.scrollHeight;
+        }
+
+        // Tab 切换
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+            });
+        });
+
+        // 打开文本文件进行编辑
+        async function openTextFile() {
+            try {
+                await window.go.main.App.OpenTextFile();
+            } catch (e) {
+                console.error('打开文件失败:', e);
+                alert('打开文件失败: ' + e);
+            }
+        }
+
+        // 加载文本列表
+        async function loadTextList() {
+            try {
+                texts = await window.go.main.App.GetTextList();
+                renderTextList();
+            } catch (e) {
+                console.error('加载文本列表失败:', e);
+            }
+        }
+
+        // 渲染文本列表
+        function renderTextList() {
+            const list = document.getElementById('textList');
+            if (texts.length === 0) {
+                list.innerHTML = '<div class="text-item" style="color: #999; justify-content: center;">暂无文本，请点击"打开文件编辑"添加</div>';
+                return;
+            }
+            list.innerHTML = texts.map((text, i) => `
+                <div class="text-item">
+                    <span class="text-item-num">${String(i + 1).padStart(4, '0')}</span>
+                    <span class="text-item-content">${text}</span>
+                </div>
+            `).join('');
+        }
+
+        // 打开输出目录
+        async function openOutputDir() {
+            try {
+                await window.go.main.App.OpenDirectory('output');
+            } catch (e) {
+                console.error('打开目录失败:', e);
+                alert('打开目录失败: ' + e);
+            }
+        }
+
+        // 打开播放目录（使用当前选择的播放目录）
+        async function openPlayDir() {
+            try {
+                const dir = await window.go.main.App.GetPlayDir();
+                await window.go.main.App.OpenDirectory(dir || 'output');
+            } catch (e) {
+                console.error('打开目录失败:', e);
+                alert('打开目录失败: ' + e);
+            }
+        }
+
+        // 打开测试报告
+        async function openTestReport() {
+            try {
+                await window.go.main.App.OpenTestReport();
+            } catch (e) {
+                console.error('打开测试报告失败:', e);
+                alert('打开测试报告失败: ' + e);
+            }
+        }
+
+        // 运行批量生成
+        let isGenerating = false;
+        async function runGenerate() {
+            if (isGenerating) {
+                return;
+            }
+
+            isGenerating = true;
+            const btn = document.getElementById('generateBtn');
+            const stopBtn = document.getElementById('stopGenerateBtn');
+            const statusText = document.getElementById('statusText');
+            const outputConsole = document.getElementById('generateOutput');
+
+            btn.disabled = true;
+            btn.textContent = '生成中...';
+            stopBtn.style.display = 'inline-block';
+            statusText.textContent = '正在启动批量生成...';
+            outputConsole.innerHTML = '';
+            outputConsole.classList.add('active');
+
+            try {
+                await window.go.main.App.RunGenerate();
+            } catch (e) {
+                appendOutput('generateOutput', '启动失败: ' + e, 'error');
+                btn.disabled = false;
+                btn.textContent = '批量生成语音';
+                stopBtn.style.display = 'none';
+                isGenerating = false;
+            }
+        }
+
+        // 停止生成
+        async function stopGenerate() {
+            try {
+                await window.go.main.App.StopGenerate();
+                appendOutput('generateOutput', '已停止生成', 'info');
+            } catch (e) {
+                console.error('停止失败:', e);
+            }
+        }
+
+        // 运行播放模式
+        let isPlaying = false;
+        async function runPlay() {
+            if (isPlaying) {
+                return;
+            }
+
+            isPlaying = true;
+            const btn = document.getElementById('playBtn');
+            const stopBtn = document.getElementById('stopPlayBtn');
+            const statusText = document.getElementById('playStatusText');
+            const outputConsole = document.getElementById('playOutput');
+
+            btn.disabled = true;
+            btn.textContent = '播放中...';
+            stopBtn.style.display = 'inline-block';
+            statusText.textContent = '正在启动播放模式...';
+            outputConsole.innerHTML = '';
+            outputConsole.classList.add('active');
+
+            try {
+                await window.go.main.App.RunPlay();
+            } catch (e) {
+                appendOutput('playOutput', '启动失败: ' + e, 'error');
+                btn.disabled = false;
+                btn.textContent = '开始播放';
+                stopBtn.style.display = 'none';
+                isPlaying = false;
+            }
+        }
+
+        // 停止播放
+        async function stopPlay() {
+            try {
+                await window.go.main.App.StopPlay();
+                appendOutput('playOutput', '已停止播放', 'info');
+            } catch (e) {
+                console.error('停止失败:', e);
+            }
+        }
+
+        // 添加输出到控制台
+        function appendOutput(consoleId, message, type = 'normal') {
+            const outputConsole = document.getElementById(consoleId);
+            const line = document.createElement('div');
+            line.className = 'line';
+            if (type === 'error') {
+                line.classList.add('error');
+            } else if (type === 'success') {
+                line.classList.add('success');
+            } else if (type === 'info') {
+                line.classList.add('info');
+            }
+            line.textContent = message;
+            outputConsole.appendChild(line);
+            outputConsole.scrollTop = outputConsole.scrollHeight;
+        }
+
+        // 初始化事件监听
+        function initEventListeners() {
+            window.runtime.EventsOn('generate-output', (data) => {
+                const statusText = document.getElementById('statusText');
+                const btn = document.getElementById('generateBtn');
+                const stopBtn = document.getElementById('stopGenerateBtn');
+
+                if (data.type === 'start') {
+                    statusText.textContent = data.message;
+                    appendOutput('generateOutput', data.message, 'info');
+                } else if (data.type === 'output') {
+                    appendOutput('generateOutput', data.message);
+                    // 更新状态显示最后一行
+                    if (data.message.includes('->') || data.message.includes('完成')) {
+                        statusText.textContent = data.message;
+                    }
+                } else if (data.type === 'error') {
+                    appendOutput('generateOutput', data.message, 'error');
+                } else if (data.type === 'done') {
+                    statusText.textContent = data.message;
+                    appendOutput('generateOutput', data.message, 'success');
+                    btn.disabled = false;
+                    btn.textContent = '批量生成语音';
+                    stopBtn.style.display = 'none';
+                    isGenerating = false;
+                }
+            });
+
+            window.runtime.EventsOn('play-output', (data) => {
+                const statusText = document.getElementById('playStatusText');
+                const btn = document.getElementById('playBtn');
+                const stopBtn = document.getElementById('stopPlayBtn');
+
+                if (data.type === 'start') {
+                    statusText.textContent = data.message;
+                    appendOutput('playOutput', data.message, 'info');
+                } else if (data.type === 'output') {
+                    appendOutput('playOutput', data.message);
+                    // 更新状态显示最后一行
+                    if (data.message.includes('完成') || data.message.includes('[')) {
+                        statusText.textContent = data.message;
+                    }
+                } else if (data.type === 'error') {
+                    appendOutput('playOutput', data.message, 'error');
+                } else if (data.type === 'done') {
+                    statusText.textContent = data.message;
+                    appendOutput('playOutput', data.message, 'success');
+                    btn.disabled = false;
+                    btn.textContent = '开始播放';
+                    stopBtn.style.display = 'none';
+                    isPlaying = false;
+                }
+            });
+
+            window.runtime.EventsOn('perfetto-timeout', (data) => {
+                const stopMs = Date.now();
+                perfTimerRunning = false;
+                document.getElementById('perfStartBtn').disabled = false;
+                document.getElementById('perfStopBtn').disabled = true;
+                if (data.resultDir) {
+                    perfLastResultDir = data.resultDir;
+                    document.getElementById('perfOpenResultBtn').disabled = false;
+                }
+                perfAppendOutput('已达到最大采集时长，Perfetto 自动停止', 'info');
+                if (data.traceFile) {
+                    perfAppendOutput('Trace 文件: ' + data.traceFile, data.success ? 'success' : 'error');
+                }
+                if (data.traceSizeBytes) {
+                    perfAppendOutput('Trace 大小: ' + data.traceSizeBytes + ' bytes', data.traceAnalyzable ? 'success' : 'error');
+                }
+                if (data.traceWarning) {
+                    perfAppendOutput(data.traceWarning, 'error');
+                }
+                perfAppendStopArtifacts(data);
+                perfAppendCapability(data.capability);
+                if (data.message) {
+                    perfAppendOutput(data.message, data.success ? 'success' : 'error');
+                }
+                if (perfCurrentLaunch) {
+                    perfRecords.push({
+                        startTime: perfStartMs,
+                        stopTime: stopMs,
+                        duration: stopMs - perfStartMs,
+                        thisTimeMs: perfCurrentLaunch.thisTimeMs || 0,
+                        totalTimeMs: perfCurrentLaunch.totalTimeMs || 0,
+                        waitTimeMs: perfCurrentLaunch.waitTimeMs || 0,
+                        traceFile: data.traceFile || '',
+                        logcatFile: data.logcatFile || '',
+                        reportFile: data.reportFile || '',
+                        timelineFile: data.timelineFile || '',
+                        traceSizeBytes: data.traceSizeBytes || 0,
+                        traceAnalyzable: !!data.traceAnalyzable,
+                        traceWarning: data.traceWarning || '',
+                        resultDir: data.resultDir || perfCurrentLaunch.resultDir || ''
+                    });
+                    perfCurrentLaunch = null;
+                    perfRenderRecords();
+                }
+            });
+        }
+
+        // 加载声音列表
+        async function loadVoices() {
+            try {
+                const voices = await window.go.main.App.GetVoices();
+                const cfg = await window.go.main.App.GetConfig();
+                const select = document.getElementById('voiceSelect');
+
+                select.innerHTML = '';
+
+                // 按引擎分组
+                const piperVoices = voices.filter(v => v.engine === 'piper');
+                const edgeVoices = voices.filter(v => v.engine === 'edge');
+
+                // Piper 组
+                if (piperVoices.length > 0) {
+                    const optgroup1 = document.createElement('optgroup');
+                    optgroup1.label = 'Piper (离线)';
+                    piperVoices.forEach(v => {
+                        const option = document.createElement('option');
+                        option.value = v.id;
+                        option.textContent = v.name + ' (' + v.gender + ')';
+                        optgroup1.appendChild(option);
+                    });
+                    select.appendChild(optgroup1);
+                }
+
+                // Edge 组
+                if (edgeVoices.length > 0) {
+                    const optgroup2 = document.createElement('optgroup');
+                    optgroup2.label = 'Edge TTS (联网)';
+                    edgeVoices.forEach(v => {
+                        const option = document.createElement('option');
+                        option.value = v.id;
+                        option.textContent = v.name + ' (' + v.gender + ')';
+                        optgroup2.appendChild(option);
+                    });
+                    select.appendChild(optgroup2);
+                }
+
+                // 设置当前选中的声音
+                if (cfg.voice_id) {
+                    select.value = cfg.voice_id;
+                } else {
+                    select.value = 'edge:zh-CN-YunjianNeural';
+                }
+            } catch (e) {
+                console.error('加载声音列表失败:', e);
+            }
+        }
+
+        // 声音选择变化
+        async function onVoiceChange() {
+            const select = document.getElementById('voiceSelect');
+            const voiceId = select.value;
+            try {
+                await window.go.main.App.SetVoice(voiceId);
+            } catch (e) {
+                console.error('设置声音失败:', e);
+            }
+        }
+
+        // 加载配置
+        async function loadConfig() {
+            try {
+                const cfg = await window.go.main.App.GetConfig();
+
+                // 加载模板
+                if (cfg.template && cfg.template.length > 0) {
+                    currentTemplate = cfg.template;
+                } else {
+                    // 兼容旧配置，转换为模板格式
+                    currentTemplate = [];
+                    if (cfg.silence_start > 0) {
+                        currentTemplate.push({ type: 'silence', seconds: cfg.silence_start });
+                    }
+                    if (cfg.prefix_text) {
+                        currentTemplate.push({ type: 'voice', text: cfg.prefix_text });
+                        if (cfg.silence_after_prefix > 0) {
+                            currentTemplate.push({ type: 'silence', seconds: cfg.silence_after_prefix });
+                        }
+                    }
+                    currentTemplate.push({ type: 'voice', text: '$MAIN' });
+                    if (cfg.silence_after_main > 0) {
+                        currentTemplate.push({ type: 'silence', seconds: cfg.silence_after_main });
+                    }
+                    if (cfg.suffix_text1) {
+                        currentTemplate.push({ type: 'voice', text: cfg.suffix_text1 });
+                        if (cfg.silence_after_suffix > 0) {
+                            currentTemplate.push({ type: 'silence', seconds: cfg.silence_after_suffix });
+                        }
+                    }
+                    if (cfg.suffix_text2) {
+                        currentTemplate.push({ type: 'voice', text: cfg.suffix_text2 });
+                    }
+                    if (cfg.silence_end > 0) {
+                        currentTemplate.push({ type: 'silence', seconds: cfg.silence_end });
+                    }
+                }
+                renderTemplateEditor();
+
+                document.getElementById('screenshotBeforeEnd').value = cfg.screenshot_before_end || 12;
+                document.getElementById('textFile').value = cfg.text_file || 'text.txt';
+                document.getElementById('outputDir').value = cfg.output_dir || 'output';
+                document.getElementById('filenameMaxLength').value = cfg.filename_max_length || 30;
+
+                // 加载视频录制配置
+                const enableVideoRecording = cfg.enable_video_recording === true; // 默认为 false
+                document.getElementById('enableVideoRecording').checked = enableVideoRecording;
+                document.getElementById('recordingStartDelay').value = cfg.recording_start_delay || 5;
+                document.getElementById('recordingEndBeforeEnd').value = cfg.recording_end_before_end || 5;
+                updateVideoRecordingOptions();
+
+                // 更新音频结构显示
+                updateAudioStructure();
+            } catch (e) {
+                console.error('加载配置失败:', e);
+            }
+        }
+
+        // 更新视频录制选项显示状态
+        function updateVideoRecordingOptions() {
+            const enabled = document.getElementById('enableVideoRecording').checked;
+            const optionsDiv = document.getElementById('videoRecordingOptions');
+            if (enabled) {
+                optionsDiv.style.opacity = '1';
+                optionsDiv.style.pointerEvents = 'auto';
+            } else {
+                optionsDiv.style.opacity = '0.5';
+                optionsDiv.style.pointerEvents = 'none';
+            }
+        }
+
+        // 更新音频结构显示（根据当前模板动态生成）
+        function updateAudioStructure() {
+            const container = document.querySelector('.audio-structure');
+            let parts = [];
+
+            currentTemplate.forEach(segment => {
+                if (segment.type === 'silence') {
+                    parts.push(`<span class="silence">静音${segment.seconds}秒</span>`);
+                } else if (segment.type === 'voice') {
+                    if (segment.text === '$MAIN') {
+                        parts.push(`<span class="voice">文本内容</span>`);
+                    } else {
+                        parts.push(`<span class="voice">${segment.text}</span>`);
+                    }
+                }
+            });
+
+            container.innerHTML = parts.join('<span class="arrow">→</span>');
+        }
+
+        // 保存配置
+        async function saveConfig() {
+            // 验证模板必须包含 $MAIN
+            const hasMain = currentTemplate.some(s => s.type === 'voice' && s.text === '$MAIN');
+            if (!hasMain) {
+                alert('模板必须包含主文本 ($MAIN)');
+                return;
+            }
+
+            const cfg = {
+                template: currentTemplate,
+                screenshot_before_end: parseFloat(document.getElementById('screenshotBeforeEnd').value),
+                enable_video_recording: document.getElementById('enableVideoRecording').checked,
+                recording_start_delay: parseFloat(document.getElementById('recordingStartDelay').value),
+                recording_end_before_end: parseFloat(document.getElementById('recordingEndBeforeEnd').value),
+                text_file: document.getElementById('textFile').value,
+                output_dir: document.getElementById('outputDir').value,
+                filename_max_length: parseInt(document.getElementById('filenameMaxLength').value),
+                voice_id: document.getElementById('voiceSelect').value
+            };
+
+            try {
+                await window.go.main.App.SaveConfig(cfg);
+                alert('配置已保存');
+                updateAudioStructure();
+            } catch (e) {
+                alert('保存失败: ' + e);
+            }
+        }
+
+        // 刷新播放目录列表
+        async function refreshPlayDirs() {
+            try {
+                const dirs = await window.go.main.App.GetSubDirs('output');
+                const select = document.getElementById('playDirSelect');
+                const currentValue = select.value;
+
+                // 保留第一个默认选项
+                select.innerHTML = '<option value="">默认输出目录 (output)</option>';
+
+                // 添加子目录
+                dirs.forEach(dir => {
+                    const option = document.createElement('option');
+                    option.value = 'output/' + dir;
+                    option.textContent = dir;
+                    select.appendChild(option);
+                });
+
+                // 恢复之前的选择
+                if (currentValue) {
+                    select.value = currentValue;
+                }
+            } catch (e) {
+                console.error('刷新目录列表失败:', e);
+            }
+        }
+
+        // 浏览选择播放目录
+        async function browsePlayDir() {
+            try {
+                const dir = await window.go.main.App.SelectPlayDir();
+                if (dir) {
+                    updatePlayDirStatus(dir);
+                }
+            } catch (e) {
+                console.error('选择目录失败:', e);
+            }
+        }
+
+        // 下拉框选择变化
+        async function onPlayDirChange() {
+            const select = document.getElementById('playDirSelect');
+            const dir = select.value;
+            try {
+                await window.go.main.App.SetPlayDir(dir);
+                updatePlayDirStatus(dir);
+            } catch (e) {
+                console.error('设置播放目录失败:', e);
+            }
+        }
+
+        // 更新播放目录状态显示
+        function updatePlayDirStatus(dir) {
+            const status = document.getElementById('playDirStatus');
+            if (dir) {
+                status.textContent = '当前播放目录: ' + dir;
+                status.className = 'alert alert-success';
+            } else {
+                status.textContent = '当前播放目录: output (默认)';
+                status.className = 'alert alert-info';
+            }
+        }
+
+        // 加载当前播放目录
+        async function loadPlayDir() {
+            try {
+                const dir = await window.go.main.App.GetPlayDir();
+                const select = document.getElementById('playDirSelect');
+
+                // 刷新目录列表
+                await refreshPlayDirs();
+
+                // 设置当前值
+                if (dir) {
+                    select.value = dir;
+                    updatePlayDirStatus(dir);
+                }
+            } catch (e) {
+                console.error('加载播放目录失败:', e);
+            }
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            // 等待 Wails runtime 就绪
+            if (window.runtime) {
+                initEventListeners();
+            }
+            devRefresh();   // 刷新设备列表
+            loadTextList();
+            loadConfig();
+            loadVoices();
+            loadPlayDir();
+
+            // 监听播放目录下拉框变化
+            document.getElementById('playDirSelect').addEventListener('change', onPlayDirChange);
+            document.getElementById('playDeviceSelect').addEventListener('change', onPlayDeviceChange);
+
+            // 监听声音选择变化
+            document.getElementById('voiceSelect').addEventListener('change', onVoiceChange);
+
+            // 监听视频录制启用状态变化
+            document.getElementById('enableVideoRecording').addEventListener('change', updateVideoRecordingOptions);
+            document.getElementById('appDialogConfirm').addEventListener('click', closeAppDialog);
+            document.getElementById('appDialog').addEventListener('click', (event) => {
+                if (event.target.id === 'appDialog') {
+                    closeAppDialog();
+                }
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && document.getElementById('appDialog').classList.contains('active')) {
+                    closeAppDialog();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
