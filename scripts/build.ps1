@@ -327,7 +327,7 @@ function Build-WindowsGui {
     $wails = Get-WailsCommand
     Push-Location (Join-Path $ProjectDir "gui")
     try {
-        & $wails build -platform windows/amd64 -o $GuiExeName -clean
+        & $wails build -platform windows/amd64 -o $GuiExeName -clean -ldflags "-X main.appVersion=$Version"
     }
     finally {
         Pop-Location

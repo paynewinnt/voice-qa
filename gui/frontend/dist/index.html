@@ -46,6 +46,28 @@
             text-shadow: none;
         }
 
+        .header-title {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .update-badge {
+            border: 1px solid var(--accent);
+            background: #ffffff;
+            color: var(--accent);
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .update-badge:hover {
+            background: var(--surface-muted);
+        }
+
         .card {
             background: white;
             border-radius: 12px;
@@ -776,7 +798,10 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>语音播测工具</h1>
+            <div class="header-title">
+                <h1>语音播测工具</h1>
+                <button class="update-badge" type="button" onclick="switchTab('update')">NEW</button>
+            </div>
         </div>
 
         <div class="card">
@@ -786,6 +811,7 @@
                 <button class="tab" data-tab="generate">生成语音</button>
                 <button class="tab" data-tab="play">播放模式</button>
                 <button class="tab" data-tab="config">配置设置</button>
+                <button class="tab" data-tab="update">软件更新</button>
             </div>
 
             <!-- 设备管理 -->
@@ -1287,6 +1313,33 @@
                     <button class="btn btn-secondary" onclick="loadConfig()">重新加载</button>
                 </div>
             </div>
+
+            <!-- 软件更新 -->
+            <div id="update" class="tab-content">
+                <div class="section-header">
+                    <span class="section-title">软件更新</span>
+                </div>
+
+                <div class="alert alert-info" style="font-size:13px;">
+                    从局域网 Windows 文件服务读取版本清单，下载完成后手动解压覆盖当前程序目录。
+                </div>
+
+                <div class="form-group">
+                    <label>版本清单地址</label>
+                    <input type="text" id="updateManifestUrl" value="http://172.16.15.15/latest.json">
+                    <div style="margin-top: 8px; font-size: 12px; color: #666;">
+                        局域网文件服务需提供 latest.json 和更新包，下载完成后手动解压覆盖当前目录。
+                    </div>
+                </div>
+
+                <div class="alert alert-info" id="updateStatus" style="font-size:13px;white-space:pre-wrap;">当前版本: 加载中</div>
+
+                <div class="btn-group">
+                    <button class="btn btn-primary" id="checkUpdateBtn" onclick="checkUpdate()">检查更新</button>
+                    <button class="btn btn-success" id="downloadUpdateBtn" onclick="downloadUpdate()" disabled>下载更新包</button>
+                    <button class="btn btn-secondary" id="openUpdateDirBtn" onclick="openUpdateDir()" disabled>打开更新目录</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1307,6 +1360,8 @@
         let texts = [];
         let currentTemplate = [];
         let activeDialogResolver = null;
+        let pendingUpdate = null;
+        let downloadedUpdateDir = '';
 
         function closeAppDialog() {
             const dialog = document.getElementById('appDialog');
@@ -2462,12 +2517,21 @@
         }
 
         // Tab 切换
+        function switchTab(tabId) {
+            const target = document.getElementById(tabId);
+            if (!target) return;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            const tab = document.querySelector('.tab[data-tab="' + tabId + '"]');
+            if (tab) {
+                tab.classList.add('active');
+            }
+            target.classList.add('active');
+        }
+
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                tab.classList.add('active');
-                document.getElementById(tab.dataset.tab).classList.add('active');
+                switchTab(tab.dataset.tab);
             });
         });
 
@@ -2534,6 +2598,101 @@
             } catch (e) {
                 console.error('打开测试报告失败:', e);
                 alert('打开测试报告失败: ' + e);
+            }
+        }
+
+        async function initUpdatePanel() {
+            try {
+                const version = await window.go.main.App.GetAppVersion();
+                const defaultUrl = await window.go.main.App.GetDefaultUpdateURL();
+                document.getElementById('updateManifestUrl').value = defaultUrl || 'http://172.16.15.15/latest.json';
+                document.getElementById('updateStatus').textContent = '当前版本: ' + version;
+            } catch (e) {
+                document.getElementById('updateStatus').textContent = '当前版本: 获取失败';
+            }
+        }
+
+        async function checkUpdate() {
+            const btn = document.getElementById('checkUpdateBtn');
+            const downloadBtn = document.getElementById('downloadUpdateBtn');
+            const status = document.getElementById('updateStatus');
+            const manifestUrl = document.getElementById('updateManifestUrl').value.trim();
+            btn.disabled = true;
+            downloadBtn.disabled = true;
+            downloadBtn.textContent = '下载更新包';
+            pendingUpdate = null;
+            status.textContent = '正在检查更新...';
+            try {
+                const result = await window.go.main.App.CheckUpdate(manifestUrl);
+                if (!result.success) {
+                    status.textContent = '检查更新失败: ' + result.message;
+                    return;
+                }
+                const lines = [
+                    '当前版本: ' + result.currentVersion,
+                    '最新版本: ' + result.latestVersion,
+                    result.message
+                ];
+                if (result.notes) {
+                    lines.push('更新说明: ' + result.notes);
+                }
+                if (!result.hasUpdate && result.url) {
+                    lines.push('如需重新获取当前版本，可直接下载更新包。');
+                }
+                status.textContent = lines.join('\n');
+                if (result.url) {
+                    pendingUpdate = result;
+                    downloadBtn.disabled = false;
+                    downloadBtn.textContent = result.hasUpdate ? '下载更新包' : '重新下载当前版本';
+                }
+            } catch (e) {
+                status.textContent = '检查更新失败: ' + e;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function downloadUpdate() {
+            if (!pendingUpdate || !pendingUpdate.url) {
+                alert('请先检查更新');
+                return;
+            }
+            const btn = document.getElementById('downloadUpdateBtn');
+            const openBtn = document.getElementById('openUpdateDirBtn');
+            const status = document.getElementById('updateStatus');
+            btn.disabled = true;
+            status.textContent = '正在下载更新包...';
+            try {
+                const result = await window.go.main.App.DownloadUpdate(pendingUpdate.url, pendingUpdate.sha256 || '');
+                if (!result.success) {
+                    status.textContent = '下载更新包失败: ' + result.message;
+                    btn.disabled = false;
+                    return;
+                }
+                downloadedUpdateDir = result.dir;
+                openBtn.disabled = false;
+                status.textContent = [
+                    result.message,
+                    '文件: ' + result.filePath,
+                    '大小: ' + result.size + ' bytes',
+                    'SHA256: ' + result.sha256,
+                    '请关闭程序后解压更新包覆盖当前目录。'
+                ].join('\n');
+            } catch (e) {
+                status.textContent = '下载更新包失败: ' + e;
+                btn.disabled = false;
+            }
+        }
+
+        async function openUpdateDir() {
+            if (!downloadedUpdateDir) {
+                alert('暂无已下载的更新目录');
+                return;
+            }
+            try {
+                await window.go.main.App.OpenDirectory(downloadedUpdateDir);
+            } catch (e) {
+                alert('打开更新目录失败: ' + e);
             }
         }
 
@@ -3012,6 +3171,7 @@
             loadConfig();
             loadVoices();
             loadPlayDir();
+            initUpdatePanel();
 
             // 监听播放目录下拉框变化
             document.getElementById('playDirSelect').addEventListener('change', onPlayDirChange);

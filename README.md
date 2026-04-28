@@ -293,6 +293,16 @@ ISCC installer/setup.iss
 
 安装包版本号自动生成，格式：`YYYY.MMDD.HHMM`
 
+## Windows GUI 局域网更新
+
+Windows GUI 支持从局域网文件服务手动检查更新、下载更新包并打开下载目录。默认版本清单地址为：
+
+```text
+http://172.16.15.15/latest.json
+```
+
+GUI 默认只负责下载，不会在运行中覆盖自身。下载完成后需要关闭程序，手动解压 zip 并覆盖原目录。完整 IIS 部署、`latest.json` 格式、SHA256 校验和排障步骤见 [Windows GUI 局域网更新指南](docs/windows-gui-lan-update.md)。
+
 ## 技术栈
 
 - **语言**: Go 1.21+

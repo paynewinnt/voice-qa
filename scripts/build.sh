@@ -399,7 +399,7 @@ build_windows_gui() {
 
     # 构建 GUI
     cd "$PROJECT_DIR/gui"
-    wails build -platform windows/amd64 -o "语音播测工具.exe" -clean
+    wails build -platform windows/amd64 -o "语音播测工具.exe" -clean -ldflags "-X main.appVersion=${VERSION}"
 
     # 复制 GUI 可执行文件
     cp "$PROJECT_DIR/gui/build/bin/语音播测工具.exe" "$OUTPUT_DIR/"

@@ -3,8 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +29,11 @@ import (
 )
 
 const defaultModel = "zh_CN-huayan-medium.onnx"
+
+var (
+	appVersion       = "dev"
+	defaultUpdateURL = "http://172.16.15.15/latest.json"
+)
 
 // App struct
 type App struct {
@@ -545,6 +554,221 @@ func (a *App) OpenDirectory(path string) error {
 	// 其他系统使用默认方式
 	runtime.BrowserOpenURL(a.ctx, "file://"+path)
 	return nil
+}
+
+type UpdateInfo struct {
+	Version string `json:"version"`
+	Notes   string `json:"notes"`
+	URL     string `json:"url"`
+	SHA256  string `json:"sha256"`
+}
+
+type UpdateCheckResult struct {
+	Success        bool   `json:"success"`
+	Message        string `json:"message"`
+	CurrentVersion string `json:"currentVersion"`
+	LatestVersion  string `json:"latestVersion"`
+	HasUpdate      bool   `json:"hasUpdate"`
+	Notes          string `json:"notes"`
+	URL            string `json:"url"`
+	SHA256         string `json:"sha256"`
+	UpdateJSONURL  string `json:"updateJsonUrl"`
+}
+
+type UpdateDownloadResult struct {
+	Success  bool   `json:"success"`
+	Message  string `json:"message"`
+	FilePath string `json:"filePath"`
+	Dir      string `json:"dir"`
+	Size     int64  `json:"size"`
+	SHA256   string `json:"sha256"`
+}
+
+func (a *App) GetAppVersion() string {
+	return appVersion
+}
+
+func (a *App) GetDefaultUpdateURL() string {
+	return defaultUpdateURL
+}
+
+func (a *App) CheckUpdate(updateJSONURL string) UpdateCheckResult {
+	updateJSONURL = strings.TrimSpace(updateJSONURL)
+	if updateJSONURL == "" {
+		updateJSONURL = defaultUpdateURL
+	}
+
+	info, err := fetchUpdateInfo(updateJSONURL)
+	if err != nil {
+		return UpdateCheckResult{Success: false, Message: err.Error(), CurrentVersion: appVersion, UpdateJSONURL: updateJSONURL}
+	}
+	downloadURL, err := resolveUpdateURL(updateJSONURL, info.URL)
+	if err != nil {
+		return UpdateCheckResult{Success: false, Message: err.Error(), CurrentVersion: appVersion, UpdateJSONURL: updateJSONURL}
+	}
+
+	hasUpdate := compareVersions(info.Version, appVersion) > 0
+	message := "当前已是最新版本"
+	if hasUpdate {
+		message = fmt.Sprintf("发现新版本 %s", info.Version)
+	}
+	return UpdateCheckResult{
+		Success:        true,
+		Message:        message,
+		CurrentVersion: appVersion,
+		LatestVersion:  info.Version,
+		HasUpdate:      hasUpdate,
+		Notes:          info.Notes,
+		URL:            downloadURL,
+		SHA256:         strings.ToLower(strings.TrimSpace(info.SHA256)),
+		UpdateJSONURL:  updateJSONURL,
+	}
+}
+
+func (a *App) DownloadUpdate(updateURL, expectedSHA256 string) UpdateDownloadResult {
+	updateURL = strings.TrimSpace(updateURL)
+	if updateURL == "" {
+		return UpdateDownloadResult{Success: false, Message: "更新包 URL 为空"}
+	}
+	parsed, err := url.Parse(updateURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return UpdateDownloadResult{Success: false, Message: "更新包 URL 无效"}
+	}
+
+	fileName := filepath.Base(parsed.Path)
+	if fileName == "." || fileName == "/" || strings.TrimSpace(fileName) == "" {
+		fileName = "voice-qa-update.zip"
+	}
+	updateDir := filepath.Join(a.resolvedOutputDir(), "updates")
+	if err := os.MkdirAll(updateDir, 0755); err != nil {
+		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("创建更新目录失败: %v", err)}
+	}
+	targetPath := filepath.Join(updateDir, fileName)
+
+	client := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := client.Get(updateURL)
+	if err != nil {
+		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("下载失败: %v", err), Dir: updateDir}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("下载失败: HTTP %d", resp.StatusCode), Dir: updateDir}
+	}
+
+	tmpPath := targetPath + ".download"
+	file, err := os.Create(tmpPath)
+	if err != nil {
+		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("创建文件失败: %v", err), Dir: updateDir}
+	}
+	hasher := sha256.New()
+	size, copyErr := io.Copy(io.MultiWriter(file, hasher), resp.Body)
+	closeErr := file.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("写入文件失败: %v", copyErr), Dir: updateDir}
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("关闭文件失败: %v", closeErr), Dir: updateDir}
+	}
+
+	actualSHA256 := fmt.Sprintf("%x", hasher.Sum(nil))
+	expectedSHA256 = strings.ToLower(strings.TrimSpace(expectedSHA256))
+	if expectedSHA256 != "" && expectedSHA256 != actualSHA256 {
+		_ = os.Remove(tmpPath)
+		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("SHA256 校验失败: 期望 %s，实际 %s", expectedSHA256, actualSHA256), Dir: updateDir, Size: size, SHA256: actualSHA256}
+	}
+	if err := os.Rename(tmpPath, targetPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("保存更新包失败: %v", err), Dir: updateDir, Size: size, SHA256: actualSHA256}
+	}
+
+	return UpdateDownloadResult{Success: true, Message: "更新包下载完成", FilePath: targetPath, Dir: updateDir, Size: size, SHA256: actualSHA256}
+}
+
+func fetchUpdateInfo(updateJSONURL string) (UpdateInfo, error) {
+	parsed, err := url.Parse(updateJSONURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return UpdateInfo{}, fmt.Errorf("版本清单 URL 无效")
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(updateJSONURL)
+	if err != nil {
+		return UpdateInfo{}, fmt.Errorf("检查更新失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return UpdateInfo{}, fmt.Errorf("检查更新失败: HTTP %d", resp.StatusCode)
+	}
+	var info UpdateInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return UpdateInfo{}, fmt.Errorf("解析版本清单失败: %w", err)
+	}
+	info.Version = strings.TrimSpace(info.Version)
+	info.URL = strings.TrimSpace(info.URL)
+	if info.Version == "" {
+		return UpdateInfo{}, fmt.Errorf("版本清单缺少 version")
+	}
+	if info.URL == "" {
+		return UpdateInfo{}, fmt.Errorf("版本清单缺少 url")
+	}
+	return info, nil
+}
+
+func resolveUpdateURL(baseURL, updatePath string) (string, error) {
+	parsedUpdate, err := url.Parse(strings.TrimSpace(updatePath))
+	if err != nil {
+		return "", fmt.Errorf("更新包 URL 无效: %w", err)
+	}
+	if parsedUpdate.IsAbs() {
+		return parsedUpdate.String(), nil
+	}
+	parsedBase, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("版本清单 URL 无效: %w", err)
+	}
+	return parsedBase.ResolveReference(parsedUpdate).String(), nil
+}
+
+func compareVersions(a, b string) int {
+	ap := versionParts(a)
+	bp := versionParts(b)
+	maxLen := len(ap)
+	if len(bp) > maxLen {
+		maxLen = len(bp)
+	}
+	for i := 0; i < maxLen; i++ {
+		var av, bv int
+		if i < len(ap) {
+			av = ap[i]
+		}
+		if i < len(bp) {
+			bv = bp[i]
+		}
+		if av > bv {
+			return 1
+		}
+		if av < bv {
+			return -1
+		}
+	}
+	return strings.Compare(strings.TrimSpace(a), strings.TrimSpace(b))
+}
+
+func versionParts(version string) []int {
+	fields := strings.FieldsFunc(version, func(r rune) bool {
+		return r < '0' || r > '9'
+	})
+	parts := make([]int, 0, len(fields))
+	for _, field := range fields {
+		if field == "" {
+			continue
+		}
+		var value int
+		fmt.Sscanf(field, "%d", &value)
+		parts = append(parts, value)
+	}
+	return parts
 }
 
 // OpenTextFile 打开文本文件进行编辑
