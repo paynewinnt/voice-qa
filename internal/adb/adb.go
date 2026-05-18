@@ -131,13 +131,16 @@ func StartLogcat(outputPath string) (*LogcatRecorder, error) {
 
 // StartLogcatForDevice 开始记录指定设备的 logcat 到文件
 func StartLogcatForDevice(serial, outputPath string) (*LogcatRecorder, error) {
+	adb := findAdb()
+	if err := clearLogcatForDevice(adb, serial); err != nil {
+		return nil, err
+	}
+
 	// 创建输出文件
 	file, err := os.Create(outputPath)
 	if err != nil {
 		return nil, fmt.Errorf("创建日志文件失败: %w", err)
 	}
-
-	adb := findAdb()
 
 	// 启动 logcat（读取所有缓冲区：main, system, radio, events, crash）
 	cmd := exec.Command(adb, withDeviceArgs(serial, "logcat", "-b", "all")...)
@@ -185,6 +188,24 @@ func StartLogcatForDevice(serial, outputPath string) (*LogcatRecorder, error) {
 	}()
 
 	return recorder, nil
+}
+
+func clearLogcatForDevice(adb, serial string) error {
+	cmd := exec.Command(adb, withDeviceArgs(serial, "logcat", "-b", "all", "-c")...)
+	hideWindow(cmd)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		fallback := exec.Command(adb, withDeviceArgs(serial, "logcat", "-c")...)
+		hideWindow(fallback)
+		if fallbackOutput, fallbackErr := fallback.CombinedOutput(); fallbackErr != nil {
+			return fmt.Errorf("清理 logcat 失败: %s %w；fallback: %s %v",
+				strings.TrimSpace(string(output)),
+				err,
+				strings.TrimSpace(string(fallbackOutput)),
+				fallbackErr,
+			)
+		}
+	}
+	return nil
 }
 
 // Stop 停止 logcat 记录
@@ -400,6 +421,10 @@ func StartVideoRecordingForDevice(serial, outputPath string, maxDuration int) (*
 		maxDuration = 180 // 默认最大 180 秒
 	}
 
+	// screenrecord 在息屏或刚唤醒时启动，前几秒可能只能拿到黑色合成帧。
+	// 先唤醒并等待显示状态稳定，再启动录制。
+	_ = prepareDeviceForScreenRecording(adb, serial)
+
 	// 设备上的临时视频路径
 	devicePath := "/sdcard/recording_tmp.mp4"
 
@@ -412,16 +437,9 @@ func StartVideoRecordingForDevice(serial, outputPath string, maxDuration int) (*
 	os.Remove(outputPath)
 	os.Remove(outputPath + ".tmp")
 
-	// 构建 screenrecord 命令参数
+	// 构建 screenrecord 命令参数。不要追加 --bugreport，它不是录音参数，
+	// 会改变 screenrecord 输出行为，部分设备开头更容易出现异常画面。
 	args := []string{"shell", "screenrecord", "--time-limit", fmt.Sprintf("%d", maxDuration)}
-
-	// Android 10+ (SDK 29+) 支持录制内部音频
-	sdkVersion := getAndroidVersionForDevice(serial)
-	if sdkVersion >= 29 {
-		// Android 10+ 使用 --bugreport 可以录制内部音频
-		args = append(args, "--bugreport")
-	}
-
 	args = append(args, devicePath)
 
 	// 启动 screenrecord（在后台运行）
@@ -441,6 +459,41 @@ func StartVideoRecordingForDevice(serial, outputPath string, maxDuration int) (*
 	}
 
 	return recorder, nil
+}
+
+func prepareDeviceForScreenRecording(adbPath, serial string) error {
+	wakeCmd := exec.Command(adbPath, withDeviceArgs(serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP")...)
+	hideWindow(wakeCmd)
+	if output, err := wakeCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("唤醒屏幕失败: %w, 输出: %s", err, strings.TrimSpace(string(output)))
+	}
+
+	dismissCmd := exec.Command(adbPath, withDeviceArgs(serial, "shell", "wm", "dismiss-keyguard")...)
+	hideWindow(dismissCmd)
+	_ = dismissCmd.Run()
+
+	for i := 0; i < 12; i++ {
+		if isDisplayOn(adbPath, serial) {
+			time.Sleep(500 * time.Millisecond)
+			return nil
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return nil
+}
+
+func isDisplayOn(adbPath, serial string) bool {
+	cmd := exec.Command(adbPath, withDeviceArgs(serial, "shell", "dumpsys", "power")...)
+	hideWindow(cmd)
+	output, err := cmd.Output()
+	if err != nil {
+		return true
+	}
+	text := string(output)
+	return strings.Contains(text, "Display Power: state=ON") ||
+		strings.Contains(text, "mWakefulness=Awake") ||
+		strings.Contains(text, "mScreenOn=true") ||
+		strings.Contains(text, "mInteractive=true")
 }
 
 // Stop 停止录制并拉取视频文件

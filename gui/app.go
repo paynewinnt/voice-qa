@@ -37,19 +37,23 @@ var (
 
 // App struct
 type App struct {
-	ctx              context.Context
-	cfg              *config.Config
-	ttsEngine        tts.Engine // TTS 引擎接口
-	generateCmd      *exec.Cmd  // 当前生成进程
-	playCmd          *exec.Cmd  // 当前播放进程
-	playDir          string     // 播放目录（默认为 output）
-	playDevice       string     // 播放模式目标设备序列号
-	activePlayDevice string
-	perfSession      *perfetto.Session
-	perfLogcat       *perfetto.LogcatSession
-	perfResult       *perfetto.LaunchResult
-	perfTimer        *time.Timer
-	cmdMu            sync.Mutex // 保护 generateCmd 和 playCmd 的互斥锁
+	ctx                   context.Context
+	cfg                   *config.Config
+	ttsEngine             tts.Engine // TTS 引擎接口
+	generateCmd           *exec.Cmd  // 当前生成进程
+	playCmd               *exec.Cmd  // 当前播放进程
+	playDir               string     // 播放目录（默认为 output）
+	playDevice            string     // 播放模式目标设备序列号
+	activePlayDevice      string
+	perfSession           *perfetto.Session
+	perfLogcat            *perfetto.LogcatSession
+	perfResult            *perfetto.LaunchResult
+	perfTimer             *time.Timer
+	manualRecorder        *adb.VideoRecorder
+	manualRecordPath      string
+	manualRecordSerial    string
+	manualRecordStartedAt time.Time
+	cmdMu                 sync.Mutex // 保护 generateCmd 和 playCmd 的互斥锁
 }
 
 // NewApp 创建新的 App 实例
@@ -79,12 +83,17 @@ func (a *App) shutdown(ctx context.Context) {
 	playCancel := playCancel
 	perfSession := a.perfSession
 	perfLogcat := a.perfLogcat
+	manualRecorder := a.manualRecorder
 	if a.perfTimer != nil {
 		a.perfTimer.Stop()
 		a.perfTimer = nil
 	}
 	a.perfSession = nil
 	a.perfLogcat = nil
+	a.manualRecorder = nil
+	a.manualRecordPath = ""
+	a.manualRecordSerial = ""
+	a.manualRecordStartedAt = time.Time{}
 	a.cmdMu.Unlock()
 
 	if genCancel != nil {
@@ -98,6 +107,9 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	if perfLogcat != nil {
 		_ = perfLogcat.Stop()
+	}
+	if manualRecorder != nil {
+		_ = manualRecorder.Stop()
 	}
 
 	player.StopAllPlayback()
@@ -895,6 +907,16 @@ type AdbCommandResult struct {
 	Output  string `json:"output"`
 }
 
+// ManualRecordingResult 手动录屏操作结果
+type ManualRecordingResult struct {
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	Path       string `json:"path"`
+	Serial     string `json:"serial"`
+	DurationMs int64  `json:"durationMs"`
+	SaveMs     int64  `json:"saveMs"`
+}
+
 // RunAdbCommand 执行 adb 命令，adb 仅使用程序目录或当前目录下的 adb/adb.exe
 func (a *App) RunAdbCommand(serial, commandText string) AdbCommandResult {
 	commandText = strings.TrimSpace(commandText)
@@ -959,6 +981,115 @@ func hasAdbSerialArg(args []string) bool {
 		}
 	}
 	return false
+}
+
+// StartManualScreenRecording 开始手动录屏，文件保存到 output/recordings。
+func (a *App) StartManualScreenRecording(serial string) ManualRecordingResult {
+	a.cmdMu.Lock()
+	if a.manualRecorder != nil {
+		path := a.manualRecordPath
+		activeSerial := a.manualRecordSerial
+		a.cmdMu.Unlock()
+		return ManualRecordingResult{Success: false, Message: "录屏已在进行中，请先停止当前录屏", Path: path, Serial: activeSerial}
+	}
+	a.cmdMu.Unlock()
+
+	resolvedSerial, err := a.resolveAdbDevice(serial)
+	if err != nil {
+		return ManualRecordingResult{Success: false, Message: err.Error()}
+	}
+
+	recordDir := filepath.Join(a.resolvedOutputDir(), "recordings")
+	if err := os.MkdirAll(recordDir, 0755); err != nil {
+		return ManualRecordingResult{Success: false, Message: fmt.Sprintf("创建录屏目录失败: %v", err), Serial: resolvedSerial}
+	}
+
+	fileName := fmt.Sprintf("screenrecord-%s.mp4", time.Now().Format("20060102-150405"))
+	outputPath := filepath.Join(recordDir, fileName)
+	recorder, err := adb.StartVideoRecordingForDevice(resolvedSerial, outputPath, 180)
+	if err != nil {
+		return ManualRecordingResult{Success: false, Message: err.Error(), Path: outputPath, Serial: resolvedSerial}
+	}
+
+	a.cmdMu.Lock()
+	if a.manualRecorder != nil {
+		path := a.manualRecordPath
+		activeSerial := a.manualRecordSerial
+		a.cmdMu.Unlock()
+		_ = recorder.Stop()
+		return ManualRecordingResult{Success: false, Message: "录屏已在进行中，请先停止当前录屏", Path: path, Serial: activeSerial}
+	}
+	a.manualRecorder = recorder
+	a.manualRecordPath = outputPath
+	a.manualRecordSerial = resolvedSerial
+	a.manualRecordStartedAt = time.Now()
+	a.cmdMu.Unlock()
+
+	return ManualRecordingResult{
+		Success: true,
+		Message: fmt.Sprintf("已开始录屏：%s（最长 180 秒）", resolvedSerial),
+		Path:    outputPath,
+		Serial:  resolvedSerial,
+	}
+}
+
+// StopManualScreenRecording 停止手动录屏并拉取到本地。
+func (a *App) StopManualScreenRecording() ManualRecordingResult {
+	a.cmdMu.Lock()
+	recorder := a.manualRecorder
+	outputPath := a.manualRecordPath
+	serial := a.manualRecordSerial
+	startedAt := a.manualRecordStartedAt
+	if recorder == nil {
+		a.cmdMu.Unlock()
+		return ManualRecordingResult{Success: false, Message: "当前没有正在进行的录屏"}
+	}
+	a.manualRecorder = nil
+	a.manualRecordPath = ""
+	a.manualRecordSerial = ""
+	a.manualRecordStartedAt = time.Time{}
+	a.cmdMu.Unlock()
+
+	stopRequestedAt := time.Now()
+	if err := recorder.Stop(); err != nil {
+		return ManualRecordingResult{Success: false, Message: fmt.Sprintf("停止录屏失败: %v", err), Path: outputPath, Serial: serial}
+	}
+	savedAt := time.Now()
+	durationMs := stopRequestedAt.Sub(startedAt).Milliseconds()
+	if startedAt.IsZero() {
+		durationMs = 0
+	}
+	saveMs := savedAt.Sub(stopRequestedAt).Milliseconds()
+
+	return ManualRecordingResult{
+		Success:    true,
+		Message:    fmt.Sprintf("录屏已保存: %s（录制约 %.1f 秒，保存耗时 %.1f 秒）", outputPath, float64(durationMs)/1000, float64(saveMs)/1000),
+		Path:       outputPath,
+		Serial:     serial,
+		DurationMs: durationMs,
+		SaveMs:     saveMs,
+	}
+}
+
+func (a *App) resolveAdbDevice(serial string) (string, error) {
+	serial = strings.TrimSpace(serial)
+	if serial != "" {
+		return serial, nil
+	}
+
+	devices, err := a.GetConnectedDevices()
+	if err != nil {
+		return "", err
+	}
+
+	switch len(devices) {
+	case 0:
+		return "", fmt.Errorf("未检测到可用设备")
+	case 1:
+		return devices[0], nil
+	default:
+		return "", fmt.Errorf("检测到多台设备，请先在目标设备中选择一台")
+	}
 }
 
 func truncate(s string, maxLen int) string {
@@ -2441,7 +2572,14 @@ func (a *App) playWithArtifacts(ctx context.Context, serial, wavFile, logFile, p
 		if err := logRecorder.Stop(); err != nil {
 			return err
 		}
-		return trimLog()
+		if err := trimLog(); err != nil {
+			if strings.Contains(err.Error(), "日志中未找到起始标记") {
+				a.emitPlayOutput(fmt.Sprintf("日志起始标记未采集到，已保留完整日志: %v", err))
+				return nil
+			}
+			return err
+		}
+		return nil
 	}
 
 	time.Sleep(500 * time.Millisecond)

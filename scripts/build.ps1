@@ -39,6 +39,10 @@ Examples:
   .\scripts\build.ps1
   .\scripts\build.ps1 -Target gui
   .\scripts\build.ps1 -Target gui -Version 2026.0422.1200
+
+Output:
+  dist\tts-gui-windows-amd64-v<version>.zip
+  dist\tts-gui-windows-amd64-v<version>\
 "@
 }
 
@@ -223,7 +227,7 @@ function New-StagingOutputDir([string]$BaseName) {
 function Try-SyncToDist([string]$SourceDir, [string]$DestinationDir) {
     try {
         if (Test-Path $DestinationDir) {
-            Remove-Item -LiteralPath $DestinationDir -Recurse -Force
+            throw "Destination already exists: $DestinationDir"
         }
         Ensure-Directory (Split-Path -Parent $DestinationDir)
         Copy-Item -LiteralPath $SourceDir -Destination $DestinationDir -Recurse -Force
@@ -237,14 +241,7 @@ function Try-SyncToDist([string]$SourceDir, [string]$DestinationDir) {
 function Clear-TargetOutputs {
     $paths = New-Object System.Collections.Generic.List[string]
 
-    $paths.Add((Join-Path $DistDir "$AppName-windows-amd64"))
-    $paths.Add((Join-Path $DistDir "$AppName-gui-windows-amd64"))
-    Get-ChildItem -Path $DistDir -Filter "$AppName-windows-amd64-v*.zip" -ErrorAction SilentlyContinue | ForEach-Object {
-        $paths.Add($_.FullName)
-    }
-    Get-ChildItem -Path $DistDir -Filter "$AppName-gui-windows-amd64-v*.zip" -ErrorAction SilentlyContinue | ForEach-Object {
-        $paths.Add($_.FullName)
-    }
+    $paths.Add((Join-Path $ToolRoot ("staging\" + $Version)))
 
     foreach ($path in $paths | Select-Object -Unique) {
         if (-not (Test-Path $path)) {
@@ -316,7 +313,8 @@ function Build-WindowsCli {
 
 function Build-WindowsGui {
     Write-Step "Building windows GUI release"
-    $folderName = "$AppName-gui-windows-amd64"
+    $baseFolderName = "$AppName-gui-windows-amd64"
+    $folderName = "$baseFolderName-v$Version"
     $outputDir = New-StagingOutputDir $folderName
     Ensure-Directory $outputDir
     Ensure-Directory (Join-Path $outputDir "models")
@@ -352,7 +350,10 @@ function Build-WindowsGui {
     New-ReleaseText $outputDir
     New-UsageDoc $outputDir
 
-    $archivePath = Join-Path $DistDir "$folderName-v$Version.zip"
+    $archivePath = Join-Path $DistDir "$folderName.zip"
+    if (Test-Path $archivePath) {
+        throw "Archive already exists: $archivePath. Use a new -Version value."
+    }
     Compress-Release $outputDir $archivePath
     Try-SyncToDist $outputDir (Join-Path $DistDir $folderName)
     Write-Host "  -> $archivePath"
