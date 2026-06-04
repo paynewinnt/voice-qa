@@ -11,8 +11,8 @@
   - 多种声音可选（播音男声、标准女声等）
   - 批量文本转语音，可配置语音模板（前缀、后缀、静音间隔）
 - **播放模式测试**：播放语音 + adb logcat 记录 + 自动截图 + 视频录制 + 断言验证
-- **应用性能测试**：冷启动时间采集，支持 `am start -W`、Perfetto trace、logcat 时间线和批量统计
-- **设备管理**：ADB 连接/断开、多设备 APK 安装
+- **应用性能测试**：冷启动时间采集，支持 Component 候选下拉、`am start -W`、可选 Perfetto trace、logcat 时间线、批量统计和聚合报告
+- **设备管理**：ADB 连接/断开、多设备 APK 安装、手动录屏
 - Windows GUI 播放链路按选定设备执行，避免多设备误打
 - Windows GUI 每次播放生成独立会话目录，历史报告、日志、截图、录屏不互相覆盖
 - Windows GUI 生成阶段持久化 `manifest.json`，播放阶段优先按 `wav -> 原文` 映射断言
@@ -202,6 +202,15 @@ output/
 ├── 0001我要看电视.wav
 ├── 0002我要打电话.wav
 ├── manifest.json
+├── recordings/
+│   └── recording-20260604-095600.mp4
+├── perf/
+│   └── batch-20260604-094209-1780537329580392600/
+│       ├── run-01/
+│       │   └── report.txt
+│       ├── run-02/
+│       ├── summary.json
+│       └── aggregate_report.txt
 ├── playtest-20260422-153045-1713771045123456000/
 │   ├── 0001我要看电视.log
 │   ├── 0001我要看电视.png
@@ -258,17 +267,41 @@ adb devices
 ...
 ```
 
+## 启动时间测试
+
+Windows GUI 的「启动时间测试」用于采集 Android 应用冷启动数据。典型流程：
+
+1. 在「设备管理」中连接并选择目标设备。
+2. 选择应用包名。选择后 GUI 会自动解析可能的 Activity Component，并优先填入 launcher Activity。
+3. 在「完整 Component 名称」下拉框中选择候选项，或在输入框中手动填写完整值，例如 `com.example/.MainActivity`。
+4. 根据需要执行 `force-stop`、`pm clear`、返回首页或停止第三方应用。
+5. 执行单次启动计时，或设置次数、间隔和采集时长后执行批量启动测试。
+6. 批量完成后点击「生成聚合测试报告」，会在批量结果目录生成 `aggregate_report.txt`。
+
+核心产物：
+
+| 文件 | 说明 |
+|------|------|
+| `output/perf/launch-*` | 单次启动测试结果目录 |
+| `output/perf/batch-*` | 批量启动测试结果目录 |
+| `run-*/report.txt` | 单轮报告 |
+| `summary.json` | 批量测试机器可读汇总 |
+| `aggregate_report.txt` | 批量测试聚合报告，包含结论、测试链路、核心数据、逐轮明细和名词解释 |
+
+Perfetto 是可选能力。未勾选「启用 Perfetto」时，启动测试只依赖 `am start -W` 和 logcat；设备不支持 Perfetto 不应阻塞基础启动计时。
+
 ## Windows GUI 版本
 
-GUI 版本基于 Wails 框架开发，提供完整图形界面，包含 5 个功能标签页：
+GUI 版本基于 Wails 框架开发，提供完整图形界面，包含 6 个功能标签页：
 
 | 标签页 | 功能 |
 |--------|------|
-| **设备管理** | ADB 设备连接/断开（支持 IP 连接），多设备 APK 安装 |
-| **启动时间测试** | 应用冷启动计时（毫秒精度），支持命令式应用控制、Perfetto trace、logcat 时间线、单次/批量统计 |
+| **设备管理** | ADB 设备连接/断开（支持 IP 连接），多设备 APK 安装，手动录屏到 `output/recordings` |
+| **启动时间测试** | 应用冷启动计时（毫秒精度），支持 Component 候选下拉、命令式应用控制、可选 Perfetto trace、logcat 时间线、单次/批量统计和聚合报告 |
 | **生成语音** | 文本列表管理，批量 TTS 生成，实时进度（支持中途停止） |
 | **播放模式** | 选择目标设备后执行播放测试，自动采集 logcat / 截图 / 录屏并输出独立会话目录（支持中途停止） |
 | **配置设置** | 语音引擎选择，模板可视化编辑，视频录制参数配置 |
+| **软件更新** | 从局域网 `latest.json` 检查版本、下载 zip、校验 SHA256 并打开更新目录 |
 
 ```
 tts-gui-windows-amd64/
@@ -279,7 +312,7 @@ tts-gui-windows-amd64/
 ├── models/                    # 语音模型
 ├── adb/                       # ADB 工具
 ├── ffmpeg/                    # 视频录制工具
-└── output/                    # 输出目录（wav、manifest、playtest-* 测试结果）
+└── output/                    # 输出目录（wav、manifest、recordings、perf、playtest-*）
 ```
 
 ## Windows 安装包
@@ -301,7 +334,7 @@ Windows GUI 支持从局域网文件服务手动检查更新、下载更新包�
 http://172.16.15.15/latest.json
 ```
 
-GUI 默认只负责下载，不会在运行中覆盖自身。下载完成后需要关闭程序，手动解压 zip 并覆盖原目录。完整 IIS 部署、`latest.json` 格式、SHA256 校验和排障步骤见 [Windows GUI 局域网更新指南](docs/windows-gui-lan-update.md)。
+GUI 默认只负责下载，不会在运行中覆盖自身。下载完成后需要关闭程序，手动解压 zip；更新包会保存到当前程序目录的上一级，便于新版本目录与旧版本目录同级放置。完整 IIS 部署、`latest.json` 格式、SHA256 校验和排障步骤见 [Windows GUI 局域网更新指南](docs/windows-gui-lan-update.md)。
 
 ## 技术栈
 
