@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	goruntime "runtime"
 	"sort"
 	"strings"
@@ -651,9 +652,13 @@ func (a *App) DownloadUpdate(updateURL, expectedSHA256 string) UpdateDownloadRes
 	if fileName == "." || fileName == "/" || strings.TrimSpace(fileName) == "" {
 		fileName = "voice-qa-update.zip"
 	}
-	updateDir := filepath.Join(a.resolvedOutputDir(), "updates")
+	updateDir := a.updateDownloadDir()
 	if err := os.MkdirAll(updateDir, 0755); err != nil {
-		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("创建更新目录失败: %v", err)}
+		fallbackDir := filepath.Join(a.resolvedOutputDir(), "updates")
+		if fallbackErr := os.MkdirAll(fallbackDir, 0755); fallbackErr != nil {
+			return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("创建更新目录失败: %v", err)}
+		}
+		updateDir = fallbackDir
 	}
 	targetPath := filepath.Join(updateDir, fileName)
 
@@ -696,6 +701,17 @@ func (a *App) DownloadUpdate(updateURL, expectedSHA256 string) UpdateDownloadRes
 	}
 
 	return UpdateDownloadResult{Success: true, Message: "更新包下载完成", FilePath: targetPath, Dir: updateDir, Size: size, SHA256: actualSHA256}
+}
+
+func (a *App) updateDownloadDir() string {
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		parentDir := filepath.Dir(exeDir)
+		if parentDir != "" && parentDir != "." && parentDir != exeDir {
+			return parentDir
+		}
+	}
+	return filepath.Join(a.resolvedOutputDir(), "updates")
 }
 
 func fetchUpdateInfo(updateJSONURL string) (UpdateInfo, error) {
@@ -1432,6 +1448,194 @@ func (a *App) GetDevicePackages(serial string) ([]string, error) {
 	return packages, nil
 }
 
+// ResolveLaunchComponent returns the launcher Activity component for a package.
+func (a *App) ResolveLaunchComponent(serial, packageName string) AdbResult {
+	serial = strings.TrimSpace(serial)
+	packageName = strings.TrimSpace(packageName)
+	if serial == "" {
+		return AdbResult{Success: false, Message: "请先选择设备"}
+	}
+	if packageName == "" {
+		return AdbResult{Success: false, Message: "请先选择应用包名"}
+	}
+
+	cmd := adb.Command("-s", serial, "shell", "cmd", "package", "resolve-activity", "--brief", packageName)
+	hideConsoleWindow(cmd)
+	output, err := cmd.CombinedOutput()
+	raw := strings.TrimSpace(string(output))
+	if err != nil {
+		return AdbResult{Success: false, Message: fmt.Sprintf("解析启动 Activity 失败: %s %v", raw, err)}
+	}
+
+	lines := strings.Split(raw, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(strings.TrimSuffix(lines[i], "\r"))
+		if line == "" || strings.HasPrefix(line, "priority=") || strings.Contains(strings.ToLower(line), "no activity") {
+			continue
+		}
+		if validatePerfComponent(line) == nil {
+			return AdbResult{Success: true, Message: line}
+		}
+	}
+	return AdbResult{Success: false, Message: "未找到该包的 launcher Activity，请手动填写完整 Component"}
+}
+
+// GetPackageComponents lists likely Activity components for a package.
+func (a *App) GetPackageComponents(serial, packageName string) PackageComponentsResult {
+	serial = strings.TrimSpace(serial)
+	packageName = strings.TrimSpace(packageName)
+	if serial == "" {
+		return PackageComponentsResult{Success: false, Message: "请先选择设备"}
+	}
+	if packageName == "" {
+		return PackageComponentsResult{Success: false, Message: "请先选择应用包名"}
+	}
+
+	launcherResult := a.ResolveLaunchComponent(serial, packageName)
+	launcher := ""
+	if launcherResult.Success && validatePerfComponent(launcherResult.Message) == nil {
+		launcher = launcherResult.Message
+	}
+
+	var dumpOutput string
+	var dumpErr error
+	for _, args := range [][]string{
+		{"-s", serial, "shell", "cmd", "package", "dump", packageName},
+		{"-s", serial, "shell", "dumpsys", "package", packageName},
+	} {
+		cmd := adb.Command(args...)
+		hideConsoleWindow(cmd)
+		output, err := cmd.CombinedOutput()
+		dumpOutput = string(output)
+		dumpErr = err
+		if err == nil && strings.TrimSpace(dumpOutput) != "" {
+			break
+		}
+	}
+
+	components := parsePackageComponents(dumpOutput, packageName)
+	components = prependComponent(components, launcher)
+	if len(components) == 0 {
+		if dumpErr != nil {
+			return PackageComponentsResult{Success: false, Message: fmt.Sprintf("读取 Component 失败: %v", dumpErr)}
+		}
+		return PackageComponentsResult{Success: false, Message: "未解析到 Activity Component，请手动填写"}
+	}
+
+	return PackageComponentsResult{
+		Success:    true,
+		Message:    fmt.Sprintf("已解析到 %d 个可能的 Component", len(components)),
+		Components: components,
+		Launcher:   launcher,
+	}
+}
+
+func validatePerfComponent(component string) error {
+	component = strings.TrimSpace(component)
+	slash := strings.Index(component, "/")
+	if component == "" || slash <= 0 {
+		return fmt.Errorf("请输入完整的 Component 名称（包名/Activity名）")
+	}
+	if slash == len(component)-1 {
+		return fmt.Errorf("请输入完整的 Component 名称（包名/Activity名），当前缺少 Activity")
+	}
+	return nil
+}
+
+func parsePackageComponents(output, packageName string) []string {
+	packageName = strings.TrimSpace(packageName)
+	if strings.TrimSpace(output) == "" || packageName == "" {
+		return nil
+	}
+
+	seen := map[string]bool{}
+	add := func(component string) {
+		component = strings.Trim(component, " \t\r\n,;)")
+		if validatePerfComponent(component) != nil {
+			return
+		}
+		if !strings.HasPrefix(component, packageName+"/") {
+			return
+		}
+		seen[component] = true
+	}
+
+	componentRe := regexp.MustCompile(regexp.QuoteMeta(packageName) + `/[A-Za-z0-9_.$]+`)
+	activityClassRe := regexp.MustCompile(regexp.QuoteMeta(packageName) + `\.[A-Za-z0-9_.$]+`)
+	for _, match := range componentRe.FindAllString(output, -1) {
+		className := match[strings.LastIndex(match, "/")+1:]
+		if strings.HasSuffix(className, "Activity") {
+			add(match)
+		}
+	}
+
+	inActivityResolver := false
+	inDeclaredActivities := false
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(line)
+		switch {
+		case strings.Contains(line, "Activity Resolver Table"):
+			inActivityResolver = true
+			inDeclaredActivities = false
+			continue
+		case strings.Contains(line, "Receiver Resolver Table") ||
+			strings.Contains(line, "Service Resolver Table") ||
+			strings.Contains(line, "Provider Resolver Table") ||
+			strings.HasPrefix(trimmed, "Permissions:"):
+			inActivityResolver = false
+		case trimmed == "Activities:":
+			inDeclaredActivities = true
+			inActivityResolver = false
+			continue
+		case strings.HasPrefix(trimmed, "Receivers:") ||
+			strings.HasPrefix(trimmed, "Services:") ||
+			strings.HasPrefix(trimmed, "Providers:") ||
+			strings.HasPrefix(trimmed, "Instrumentation:"):
+			inDeclaredActivities = false
+		}
+
+		activityContext := inActivityResolver ||
+			inDeclaredActivities ||
+			strings.Contains(line, "Activity{") ||
+			strings.Contains(line, "realActivity=") ||
+			strings.Contains(line, "cmp="+packageName+"/")
+		if !activityContext {
+			continue
+		}
+
+		for _, match := range componentRe.FindAllString(line, -1) {
+			add(match)
+		}
+		if strings.Contains(lower, "activ") {
+			for _, match := range activityClassRe.FindAllString(line, -1) {
+				add(packageName + "/" + match)
+			}
+		}
+	}
+
+	components := make([]string, 0, len(seen))
+	for component := range seen {
+		components = append(components, component)
+	}
+	sort.Strings(components)
+	return components
+}
+
+func prependComponent(components []string, component string) []string {
+	component = strings.TrimSpace(component)
+	if component == "" {
+		return components
+	}
+	result := []string{component}
+	for _, item := range components {
+		if item != component {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 // PerfPrepColdStart 冷启动准备：force-stop + pm clear
 func (a *App) PerfPrepColdStart(serial, packageName string) AdbResult {
 	// force-stop
@@ -1564,6 +1768,13 @@ type PerfLaunchResult struct {
 	ResultDir   string `json:"resultDir"`
 }
 
+type PackageComponentsResult struct {
+	Success    bool     `json:"success"`
+	Message    string   `json:"message"`
+	Components []string `json:"components"`
+	Launcher   string   `json:"launcher"`
+}
+
 // PerfettoOptions 启动时间测试的 Perfetto 采集配置。
 type PerfettoOptions struct {
 	Enabled            bool `json:"enabled"`
@@ -1591,6 +1802,13 @@ type PerfBatchResult struct {
 	StdTotalMS  float64                 `json:"stdTotalMs"`
 	MinTotalMS  int                     `json:"minTotalMs"`
 	MaxTotalMS  int                     `json:"maxTotalMs"`
+}
+
+type PerfAggregateReportResult struct {
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	ReportFile string `json:"reportFile"`
+	ResultDir  string `json:"resultDir"`
 }
 
 // PerfettoStartResult 启动计时结果。
@@ -1625,6 +1843,11 @@ type PerfettoStopResult struct {
 
 // PerfLaunchActivity 启动 Activity 并返回 am start -W 的输出
 func (a *App) PerfLaunchActivity(serial, component string) PerfLaunchResult {
+	component = strings.TrimSpace(component)
+	if err := validatePerfComponent(component); err != nil {
+		return PerfLaunchResult{Success: false, Message: err.Error()}
+	}
+
 	// 记录启动命令发出的精确时间
 	startTime := time.Now()
 	timestamp := startTime.Format("2006-01-02 15:04:05.000")
@@ -1659,8 +1882,8 @@ func (a *App) PerfRunLaunchBatch(serial, component string, opts PerfBatchOptions
 	if serial == "" {
 		return PerfBatchResult{Success: false, Message: "请先选择设备"}
 	}
-	if component == "" || !strings.Contains(component, "/") {
-		return PerfBatchResult{Success: false, Message: "请输入完整的 Component 名称"}
+	if err := validatePerfComponent(component); err != nil {
+		return PerfBatchResult{Success: false, Message: err.Error()}
 	}
 
 	if opts.Count <= 0 {
@@ -1830,8 +2053,8 @@ func (a *App) PerfStartLaunchTrace(serial, component string, opts PerfettoOption
 	if serial == "" {
 		return PerfettoStartResult{Success: false, Message: "请先选择设备"}
 	}
-	if component == "" || !strings.Contains(component, "/") {
-		return PerfettoStartResult{Success: false, Message: "请输入完整的 Component 名称"}
+	if err := validatePerfComponent(component); err != nil {
+		return PerfettoStartResult{Success: false, Message: err.Error()}
 	}
 
 	a.cmdMu.Lock()
@@ -2120,6 +2343,419 @@ func fillBatchStats(result *PerfBatchResult) {
 	if result.StdTotalMS > 0 {
 		result.StdTotalMS = sqrt(result.StdTotalMS)
 	}
+}
+
+func (a *App) GeneratePerfBatchReport(resultDir string) PerfAggregateReportResult {
+	resultDir = strings.TrimSpace(resultDir)
+	if resultDir == "" {
+		return PerfAggregateReportResult{Success: false, Message: "请先完成一次批量启动测试，或打开已有批量结果目录"}
+	}
+
+	summaryPath := filepath.Join(resultDir, "summary.json")
+	data, err := os.ReadFile(summaryPath)
+	if err != nil {
+		return PerfAggregateReportResult{Success: false, Message: fmt.Sprintf("读取批量 summary.json 失败: %v", err), ResultDir: resultDir}
+	}
+
+	var batch PerfBatchResult
+	if err := json.Unmarshal(data, &batch); err != nil {
+		return PerfAggregateReportResult{Success: false, Message: fmt.Sprintf("解析批量 summary.json 失败: %v", err), ResultDir: resultDir}
+	}
+	if len(batch.Runs) == 0 {
+		return PerfAggregateReportResult{Success: false, Message: "summary.json 中没有测试轮次数据", ResultDir: resultDir}
+	}
+	if strings.TrimSpace(batch.ResultDir) == "" {
+		batch.ResultDir = resultDir
+	}
+	fillBatchStats(&batch)
+
+	reportPath := filepath.Join(resultDir, "aggregate_report.txt")
+	report := buildPerfAggregateReport(batch, reportPath)
+	if err := os.WriteFile(reportPath, []byte(report), 0644); err != nil {
+		return PerfAggregateReportResult{Success: false, Message: fmt.Sprintf("写入聚合报告失败: %v", err), ResultDir: resultDir}
+	}
+
+	return PerfAggregateReportResult{
+		Success:    true,
+		Message:    "聚合性能测试报告已生成",
+		ReportFile: reportPath,
+		ResultDir:  resultDir,
+	}
+}
+
+func buildPerfAggregateReport(batch PerfBatchResult, reportPath string) string {
+	totalRuns := len(batch.Runs)
+	successRuns := batch.Successes
+	if successRuns == 0 {
+		for _, run := range batch.Runs {
+			if run.Success {
+				successRuns++
+			}
+		}
+	}
+	failedRuns := totalRuns - successRuns
+	successRate := 0.0
+	if totalRuns > 0 {
+		successRate = float64(successRuns) * 100 / float64(totalRuns)
+	}
+
+	totalValues := collectPositiveTotals(batch.Runs)
+	waitValues := collectPositiveWaits(batch.Runs)
+	manualValues := collectManualDurations(batch.Runs)
+	sort.Ints(totalValues)
+	sort.Ints(waitValues)
+	sort.Slice(manualValues, func(i, j int) bool { return manualValues[i] < manualValues[j] })
+
+	meanTotal := meanInts(totalValues)
+	stdTotal := stddevInts(totalValues, meanTotal)
+	cv := 0.0
+	if meanTotal > 0 {
+		cv = stdTotal * 100 / meanTotal
+	}
+
+	firstRun := batch.Runs[0]
+	var b strings.Builder
+	fmt.Fprintf(&b, "启动性能批量测试聚合报告\n")
+	fmt.Fprintf(&b, "============================================================\n\n")
+	fmt.Fprintf(&b, "报告文件: %s\n", reportPath)
+	fmt.Fprintf(&b, "生成时间: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(&b, "结果目录: %s\n\n", batch.ResultDir)
+
+	fmt.Fprintf(&b, "一、测试结论\n")
+	fmt.Fprintf(&b, "------------------------------------------------------------\n")
+	if successRuns == totalRuns {
+		fmt.Fprintf(&b, "结论: 本次 %d 次启动全部成功，可以使用 TotalTime 作为本次冷启动耗时的主要结论。\n", totalRuns)
+		fmt.Fprintf(&b, "平均启动耗时约 %.0f ms，最快 %d ms，最慢 %d ms。\n", meanTotal, minInt(totalValues), maxInt(totalValues))
+		if len(totalValues) >= 2 {
+			fmt.Fprintf(&b, "稳定性: 标准方差 %.0f ms，波动系数 %.1f%%。%s\n", stdTotal, cv, stabilityText(cv))
+		}
+	} else if successRuns > 0 {
+		fmt.Fprintf(&b, "结论: 本次 %d 次测试中 %d 次成功、%d 次失败，成功率 %.1f%%。启动链路存在不稳定或参数/环境问题，建议先处理失败轮次再比较性能。\n", totalRuns, successRuns, failedRuns, successRate)
+		fmt.Fprintf(&b, "成功轮次的平均启动耗时约 %.0f ms，最快 %d ms，最慢 %d ms。\n", meanTotal, minInt(totalValues), maxInt(totalValues))
+	} else {
+		fmt.Fprintf(&b, "结论: 本次 %d 次启动全部失败，无法得出有效启动耗时结论。需要先解决启动失败原因，再重新跑批量测试。\n", totalRuns)
+	}
+	if failedRuns > 0 {
+		fmt.Fprintf(&b, "主要失败信息: %s\n", topFailureMessage(batch.Runs))
+	}
+	fmt.Fprintf(&b, "\n")
+
+	fmt.Fprintf(&b, "二、本次测试对象和链路\n")
+	fmt.Fprintf(&b, "------------------------------------------------------------\n")
+	fmt.Fprintf(&b, "设备: %s\n", emptyAsDash(firstRun.Serial))
+	fmt.Fprintf(&b, "应用包名: %s\n", emptyAsDash(firstRun.PackageName))
+	fmt.Fprintf(&b, "启动 Component: %s\n", emptyAsDash(firstRun.Component))
+	fmt.Fprintf(&b, "测试轮数: %d\n", totalRuns)
+	fmt.Fprintf(&b, "测试方式: 每一轮先按配置执行 force-stop / pm clear，然后采集 logcat，再执行 am start -W -n <Component> 启动目标 Activity。\n")
+	fmt.Fprintf(&b, "数据来源: Android am start -W 输出、logcat 时间线、可选 Perfetto trace。\n")
+	fmt.Fprintf(&b, "注意: TotalTime/WaitTime 主要衡量 Activity 启动到首帧相关耗时，不等于用户看到页面完全加载好所需的全部时间。\n\n")
+
+	fmt.Fprintf(&b, "三、核心数据汇总\n")
+	fmt.Fprintf(&b, "------------------------------------------------------------\n")
+	fmt.Fprintf(&b, "成功次数: %d/%d (%.1f%%)\n", successRuns, totalRuns, successRate)
+	if len(totalValues) > 0 {
+		fmt.Fprintf(&b, "TotalTime 平均值: %.2f ms\n", meanTotal)
+		fmt.Fprintf(&b, "TotalTime 中位数: %.0f ms\n", percentileInt(totalValues, 50))
+		fmt.Fprintf(&b, "TotalTime P90: %.0f ms\n", percentileInt(totalValues, 90))
+		fmt.Fprintf(&b, "TotalTime 最小/最大: %d / %d ms\n", minInt(totalValues), maxInt(totalValues))
+		fmt.Fprintf(&b, "TotalTime 标准方差: %.2f ms\n", stdTotal)
+		fmt.Fprintf(&b, "TotalTime 波动系数: %.1f%%\n", cv)
+	} else {
+		fmt.Fprintf(&b, "TotalTime: 无有效数据，通常表示启动命令失败或 am start 未返回计时结果。\n")
+	}
+	if len(waitValues) > 0 {
+		fmt.Fprintf(&b, "WaitTime 平均值: %.2f ms，P90: %.0f ms\n", meanInts(waitValues), percentileInt(waitValues, 90))
+	}
+	if len(manualValues) > 0 {
+		fmt.Fprintf(&b, "人工计时/采集窗口平均耗时: %.2f ms\n", meanInt64s(manualValues))
+	}
+	fmt.Fprintf(&b, "\n")
+
+	fmt.Fprintf(&b, "四、逐轮明细\n")
+	fmt.Fprintf(&b, "------------------------------------------------------------\n")
+	fmt.Fprintf(&b, "轮次 | 结果 | TotalTime | WaitTime | ThisTime | 手动耗时 | 说明\n")
+	for i, run := range batch.Runs {
+		status := "失败"
+		if run.Success {
+			status = "成功"
+		}
+		fmt.Fprintf(&b, "%02d | %s | %s | %s | %s | %d ms | %s\n",
+			i+1,
+			status,
+			msOrDash(run.TotalTimeMS),
+			msOrDash(run.WaitTimeMS),
+			msOrDash(run.ThisTimeMS),
+			run.ManualDurationMS,
+			compactRunMessage(run),
+		)
+	}
+	fmt.Fprintf(&b, "\n")
+
+	fmt.Fprintf(&b, "五、每轮产物位置\n")
+	fmt.Fprintf(&b, "------------------------------------------------------------\n")
+	for i, run := range batch.Runs {
+		fmt.Fprintf(&b, "第 %02d 轮:\n", i+1)
+		fmt.Fprintf(&b, "  目录: %s\n", emptyAsDash(run.ResultDir))
+		fmt.Fprintf(&b, "  am start 输出: %s\n", filepath.Join(run.ResultDir, "am_start.txt"))
+		fmt.Fprintf(&b, "  logcat: %s\n", emptyAsDash(run.LogcatFile))
+		fmt.Fprintf(&b, "  单轮报告: %s\n", emptyAsDash(run.ReportFile))
+		if run.TraceFile != "" {
+			fmt.Fprintf(&b, "  Perfetto trace: %s\n", run.TraceFile)
+		}
+	}
+	fmt.Fprintf(&b, "\n")
+
+	fmt.Fprintf(&b, "六、异常和风险提示\n")
+	fmt.Fprintf(&b, "------------------------------------------------------------\n")
+	if failedRuns == 0 {
+		fmt.Fprintf(&b, "未发现启动失败轮次。\n")
+	} else {
+		for i, run := range batch.Runs {
+			if run.Success {
+				continue
+			}
+			fmt.Fprintf(&b, "第 %02d 轮失败: %s\n", i+1, compactRunMessage(run))
+			if reason := inferFailureReason(run); reason != "" {
+				fmt.Fprintf(&b, "  建议: %s\n", reason)
+			}
+		}
+	}
+	if hasTraceWarnings(batch.Runs) {
+		fmt.Fprintf(&b, "Perfetto/Trace 提示:\n")
+		for i, run := range batch.Runs {
+			if strings.TrimSpace(run.TraceWarning) != "" {
+				fmt.Fprintf(&b, "  第 %02d 轮: %s\n", i+1, strings.TrimSpace(run.TraceWarning))
+			}
+		}
+	}
+	fmt.Fprintf(&b, "\n")
+
+	fmt.Fprintf(&b, "七、名词解释\n")
+	fmt.Fprintf(&b, "------------------------------------------------------------\n")
+	fmt.Fprintf(&b, "TotalTime: Android am start -W 返回的总启动耗时，通常用来衡量 Activity 冷启动到首帧相关阶段的耗时。\n")
+	fmt.Fprintf(&b, "WaitTime: am start 命令等待启动完成的时间，一般接近 TotalTime，但受系统调度影响可能不同。\n")
+	fmt.Fprintf(&b, "ThisTime: 当前 Activity 自身启动耗时；如果启动过程中跳转了多个 Activity，它可能小于 TotalTime。\n")
+	fmt.Fprintf(&b, "手动耗时: 工具从本轮开始到采集结束的墙钟时间，包含启动后继续采集 logcat/trace 的时间，不等同于启动性能。\n")
+	fmt.Fprintf(&b, "P90: 90%% 分位值。可理解为 10 次里大约 9 次不会超过这个耗时，比平均值更能反映偶发慢启动。\n")
+	fmt.Fprintf(&b, "标准方差: 数据波动大小。越小表示多次启动越稳定。\n")
+	fmt.Fprintf(&b, "波动系数: 标准方差 / 平均值。用于判断稳定性，通常低于 10%% 较稳定，10%%-20%% 有波动，高于 20%% 需要关注。\n")
+	fmt.Fprintf(&b, "logcat: Android 系统日志，可用于还原启动过程中的关键事件和错误。\n")
+	fmt.Fprintf(&b, "Perfetto trace: Android 性能追踪文件，可用于更深入分析线程、CPU、调度等问题；未启用 Perfetto 时不会生成。\n")
+	return b.String()
+}
+
+func collectPositiveTotals(runs []perfetto.LaunchResult) []int {
+	values := make([]int, 0, len(runs))
+	for _, run := range runs {
+		if run.TotalTimeMS > 0 {
+			values = append(values, run.TotalTimeMS)
+		}
+	}
+	return values
+}
+
+func collectPositiveWaits(runs []perfetto.LaunchResult) []int {
+	values := make([]int, 0, len(runs))
+	for _, run := range runs {
+		if run.WaitTimeMS > 0 {
+			values = append(values, run.WaitTimeMS)
+		}
+	}
+	return values
+}
+
+func collectManualDurations(runs []perfetto.LaunchResult) []int64 {
+	values := make([]int64, 0, len(runs))
+	for _, run := range runs {
+		if run.ManualDurationMS > 0 {
+			values = append(values, run.ManualDurationMS)
+		}
+	}
+	return values
+}
+
+func meanInts(values []int) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sum := 0
+	for _, value := range values {
+		sum += value
+	}
+	return float64(sum) / float64(len(values))
+}
+
+func meanInt64s(values []int64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	var sum int64
+	for _, value := range values {
+		sum += value
+	}
+	return float64(sum) / float64(len(values))
+}
+
+func stddevInts(values []int, mean float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	var variance float64
+	for _, value := range values {
+		diff := float64(value) - mean
+		variance += diff * diff
+	}
+	return sqrt(variance / float64(len(values)))
+}
+
+func percentileInt(sortedValues []int, percentile int) float64 {
+	if len(sortedValues) == 0 {
+		return 0
+	}
+	if len(sortedValues) == 1 {
+		return float64(sortedValues[0])
+	}
+	if percentile <= 0 {
+		return float64(sortedValues[0])
+	}
+	if percentile >= 100 {
+		return float64(sortedValues[len(sortedValues)-1])
+	}
+	rank := float64(percentile) / 100 * float64(len(sortedValues)-1)
+	lower := int(rank)
+	upper := lower + 1
+	if upper >= len(sortedValues) {
+		return float64(sortedValues[lower])
+	}
+	weight := rank - float64(lower)
+	return float64(sortedValues[lower])*(1-weight) + float64(sortedValues[upper])*weight
+}
+
+func minInt(values []int) int {
+	if len(values) == 0 {
+		return 0
+	}
+	return values[0]
+}
+
+func maxInt(values []int) int {
+	if len(values) == 0 {
+		return 0
+	}
+	return values[len(values)-1]
+}
+
+func stabilityText(cv float64) string {
+	switch {
+	case cv <= 0:
+		return "当前样本波动不可判断。"
+	case cv < 10:
+		return "整体比较稳定。"
+	case cv < 20:
+		return "存在一定波动，建议结合逐轮日志查看是否有偶发干扰。"
+	default:
+		return "波动较大，建议排查设备负载、网络、缓存、广告或初始化任务等影响。"
+	}
+}
+
+func topFailureMessage(runs []perfetto.LaunchResult) string {
+	counts := map[string]int{}
+	for _, run := range runs {
+		if run.Success {
+			continue
+		}
+		message := compactRunMessage(run)
+		if message == "" {
+			message = "未知失败"
+		}
+		counts[message]++
+	}
+	topMessage := ""
+	topCount := 0
+	for message, count := range counts {
+		if count > topCount || (count == topCount && message < topMessage) {
+			topMessage = message
+			topCount = count
+		}
+	}
+	if topMessage == "" {
+		return "-"
+	}
+	return fmt.Sprintf("%s（出现 %d 次）", topMessage, topCount)
+}
+
+func compactRunMessage(run perfetto.LaunchResult) string {
+	raw := strings.TrimSpace(run.RawOutput)
+	if strings.Contains(raw, "Bad component name") {
+		return firstMatchingLine(raw, "Bad component name")
+	}
+	if strings.Contains(raw, "Error type 3") || strings.Contains(raw, "Activity class") {
+		return firstNonEmptyLine(raw)
+	}
+	if strings.TrimSpace(run.Message) != "" {
+		return strings.TrimSpace(run.Message)
+	}
+	return firstNonEmptyLine(raw)
+}
+
+func inferFailureReason(run perfetto.LaunchResult) string {
+	raw := strings.TrimSpace(run.RawOutput)
+	switch {
+	case strings.Contains(raw, "Bad component name"):
+		return "Component 不完整或格式错误。请填写类似 com.example/.MainActivity 或 com.example/com.example.MainActivity 的完整值。"
+	case strings.Contains(raw, "Error type 3") || strings.Contains(raw, "Activity class"):
+		return "目标 Activity 不存在或未导出。请用 Component 下拉重新选择可启动 Activity。"
+	case strings.Contains(strings.ToLower(raw), "permission"):
+		return "可能存在权限限制。请确认目标 Activity 是否允许 adb shell 启动。"
+	case strings.Contains(strings.ToLower(run.Message), "logcat"):
+		return "logcat 采集启动失败。请确认设备连接稳定，adb 可正常执行 logcat。"
+	default:
+		return "请打开该轮 am_start.txt 和 logcat.txt 查看更详细错误。"
+	}
+}
+
+func hasTraceWarnings(runs []perfetto.LaunchResult) bool {
+	for _, run := range runs {
+		if strings.TrimSpace(run.TraceWarning) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func msOrDash(value int) string {
+	if value <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%d ms", value)
+}
+
+func emptyAsDash(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "-"
+	}
+	return value
+}
+
+func firstMatchingLine(text, pattern string) string {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, pattern) {
+			return line
+		}
+	}
+	return firstNonEmptyLine(text)
+}
+
+func firstNonEmptyLine(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 func sqrt(value float64) float64 {
