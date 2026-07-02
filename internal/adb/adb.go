@@ -2,6 +2,7 @@ package adb
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -99,6 +100,11 @@ func findAdb() string {
 // Command 创建一个使用项目内置 adb 优先的命令对象
 func Command(args ...string) *exec.Cmd {
 	return exec.Command(findAdb(), args...)
+}
+
+// CommandContext creates an adb command bound to the provided context.
+func CommandContext(ctx context.Context, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, findAdb(), args...)
 }
 
 // HideWindow hides the console window for a command on Windows.

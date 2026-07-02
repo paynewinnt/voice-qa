@@ -13,6 +13,7 @@ import (
 	"voice-qa/internal/adb"
 	"voice-qa/internal/audio"
 	"voice-qa/internal/config"
+	"voice-qa/internal/logassert"
 	"voice-qa/internal/player"
 	"voice-qa/internal/tts"
 )
@@ -373,27 +374,7 @@ func runPlayMode(textFile, wavDir string) {
 
 // assertLogContent 断言日志内容
 func assertLogContent(logFile, expectedQuery string) (bool, string) {
-	data, err := os.ReadFile(logFile)
-	if err != nil {
-		return false, fmt.Sprintf("无法读取日志文件: %v", err)
-	}
-
-	content := string(data)
-
-	// 查找 nlpResult 中的 query
-	// 格式: "nlpResult":{"intent":{"name":"openApp","query":"我要看电视"}
-	expectedPattern := fmt.Sprintf(`"query":"%s"`, expectedQuery)
-
-	if strings.Contains(content, expectedPattern) {
-		return true, fmt.Sprintf("找到匹配: %s", expectedPattern)
-	}
-
-	// 尝试查找部分匹配
-	if strings.Contains(content, `"nlpResult"`) {
-		return false, fmt.Sprintf("日志包含 nlpResult 但未找到 query=\"%s\"", expectedQuery)
-	}
-
-	return false, "日志中未找到 nlpResult 相关内容"
+	return logassert.AssertLogContent(logFile, expectedQuery)
 }
 
 // saveTestReport 保存测试报告

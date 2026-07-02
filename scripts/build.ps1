@@ -10,6 +10,8 @@ param(
 
     [switch]$InstallWails,
 
+    [string]$AssetBaseUrl = $env:VOICE_QA_ASSET_BASE_URL,
+
     [switch]$Help
 )
 
@@ -30,15 +32,29 @@ $TextBackHome = Decode-Utf8Base64 "6L+U5Zue6aaW6aG1"
 $GuiExeName = Decode-Utf8Base64 "6K+t6Z+z5pKt5rWL5bel5YW3LmV4ZQ=="
 $SampleText = Decode-Utf8Base64 "5oiR6KaB55yL55S16KeGCuaIkeimgeeci+S4reWkruS4ieWllwrkuIrkuKrlj7AK5LiL5Liq5Y+wCuaNouS4quWPsArmjaLkuKrpopHpgZMK5o2i6Z+z5LmQ5Y+wCuaNouWPsArlv6vpgIDkuIDlsI/ml7YK5ZCO6YCA5Y2B5YiG6ZKfCuW/q+i/m+S4ieWNgeenkgrov5Tlm57pppbpobUK5oiR6KaB55yL6YGN5Zyw5Lmm6aaZ56ys5LqU6ZuGCg=="
 
+$PiperVersion = "2023.11.14-2"
+$PiperWindowsArchiveName = "piper_windows_amd64.zip"
+$PiperWindowsUrl = "https://github.com/rhasspy/piper/releases/download/$PiperVersion/$PiperWindowsArchiveName"
+$ModelName = "zh_CN-huayan-medium"
+$ModelFileName = "$ModelName.onnx"
+$ModelConfigFileName = "$ModelName.onnx.json"
+$ModelUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/zh/zh_CN/huayan/medium/$ModelFileName"
+$ModelConfigUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/zh/zh_CN/huayan/medium/$ModelConfigFileName"
+$AdbWindowsArchiveName = "platform-tools-latest-windows.zip"
+$AdbWindowsUrl = "https://dl.google.com/android/repository/$AdbWindowsArchiveName"
+$FfmpegWindowsArchiveName = "ffmpeg-master-latest-win64-gpl.zip"
+$FfmpegWindowsUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$FfmpegWindowsArchiveName"
+
 function Show-Usage {
     @"
 Usage:
-  powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 [-Target gui] [-Version yyyy.MMdd.HHmm] [-SkipClean] [-SkipDownload] [-InstallWails]
+  powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 [-Target gui] [-Version yyyy.MMdd.HHmm] [-SkipClean] [-SkipDownload] [-InstallWails] [-AssetBaseUrl URL]
 
 Examples:
   .\scripts\build.ps1
   .\scripts\build.ps1 -Target gui
   .\scripts\build.ps1 -Target gui -Version 2026.0422.1200
+  .\scripts\build.ps1 -Target gui -AssetBaseUrl https://example.com/voice-qa-assets
 
 Output:
   dist\tts-gui-windows-amd64-v<version>.zip
@@ -82,6 +98,13 @@ function Copy-Glob([string]$Pattern, [string]$DestinationDir) {
     }
 }
 
+function Get-DownloadUrl([string]$DefaultUrl, [string]$AssetName) {
+    if ([string]::IsNullOrWhiteSpace($AssetBaseUrl)) {
+        return $DefaultUrl
+    }
+    return $AssetBaseUrl.TrimEnd([char]"/") + "/" + $AssetName
+}
+
 function Download-File([string]$Url, [string]$OutputPath) {
     Write-Step "Downloading $Url"
     Invoke-WebRequest -Uri $Url -OutFile $OutputPath
@@ -101,7 +124,7 @@ function Ensure-AdbWindows {
     $zipPath = Join-Path $adbDir "platform-tools.zip"
     $extractDir = Join-Path $adbDir "platform-tools-extract"
 
-    Download-File "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" $zipPath
+    Download-File (Get-DownloadUrl $AdbWindowsUrl $AdbWindowsArchiveName) $zipPath
     if (Test-Path $extractDir) {
         Remove-Item -LiteralPath $extractDir -Recurse -Force
     }
@@ -125,7 +148,7 @@ function Ensure-FfmpegWindows {
     $zipPath = Join-Path $ffmpegDir "ffmpeg.zip"
     $extractDir = Join-Path $ffmpegDir "ffmpeg-extract"
 
-    Download-File "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" $zipPath
+    Download-File (Get-DownloadUrl $FfmpegWindowsUrl $FfmpegWindowsArchiveName) $zipPath
     if (Test-Path $extractDir) {
         Remove-Item -LiteralPath $extractDir -Recurse -Force
     }
@@ -139,6 +162,63 @@ function Ensure-FfmpegWindows {
     Copy-Item -LiteralPath $downloadedExe.FullName -Destination $ffmpegExe -Force
     Remove-Item -LiteralPath $extractDir -Recurse -Force
     Remove-Item -LiteralPath $zipPath -Force
+}
+
+function Ensure-PiperWindows {
+    $piperRoot = Join-Path $ProjectDir "bin\piper-windows"
+    $piperDir = Join-Path $piperRoot "piper"
+    $piperExe = Join-Path $piperDir "piper.exe"
+    if (Test-Path $piperExe) {
+        return
+    }
+    if ($SkipDownload) {
+        throw "Missing $piperExe and -SkipDownload was specified."
+    }
+
+    Ensure-Directory $piperRoot
+    Ensure-Directory $piperDir
+    $zipPath = Join-Path $piperRoot $PiperWindowsArchiveName
+    $extractDir = Join-Path $piperRoot "piper-extract"
+
+    Download-File (Get-DownloadUrl $PiperWindowsUrl $PiperWindowsArchiveName) $zipPath
+    if (Test-Path $extractDir) {
+        Remove-Item -LiteralPath $extractDir -Recurse -Force
+    }
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
+
+    $downloadedExe = Get-ChildItem -Path $extractDir -Recurse -Filter "piper.exe" | Select-Object -First 1
+    if ($null -eq $downloadedExe) {
+        throw "piper.exe was not found in the downloaded archive."
+    }
+
+    Copy-DirectoryContents $downloadedExe.DirectoryName $piperDir
+    Remove-Item -LiteralPath $extractDir -Recurse -Force
+    Remove-Item -LiteralPath $zipPath -Force
+
+    if (-not (Test-Path $piperExe)) {
+        throw "piper.exe was not prepared at $piperExe."
+    }
+}
+
+function Ensure-PiperModel {
+    $modelsDir = Join-Path $ProjectDir "models"
+    $modelFile = Join-Path $modelsDir $ModelFileName
+    $configFile = Join-Path $modelsDir $ModelConfigFileName
+
+    if ((Test-Path $modelFile) -and (Test-Path $configFile)) {
+        return
+    }
+    if ($SkipDownload) {
+        throw "Missing Piper model files in $modelsDir and -SkipDownload was specified."
+    }
+
+    Ensure-Directory $modelsDir
+    if (-not (Test-Path $modelFile)) {
+        Download-File (Get-DownloadUrl $ModelUrl $ModelFileName) $modelFile
+    }
+    if (-not (Test-Path $configFile)) {
+        Download-File (Get-DownloadUrl $ModelConfigUrl $ModelConfigFileName) $configFile
+    }
 }
 
 function New-ReleaseConfig([string]$OutputDir) {
@@ -321,6 +401,7 @@ function Build-WindowsGui {
     Ensure-Directory (Join-Path $outputDir "output")
     Ensure-Directory (Join-Path $outputDir "adb")
     Ensure-Directory (Join-Path $outputDir "ffmpeg")
+    Ensure-Directory (Join-Path $outputDir "ttsengine")
 
     $wails = Get-WailsCommand
     Push-Location (Join-Path $ProjectDir "gui")
@@ -333,6 +414,7 @@ function Build-WindowsGui {
 
     Copy-Item -LiteralPath (Join-Path $ProjectDir ("gui\build\bin\" + $GuiExeName)) -Destination (Join-Path $outputDir $GuiExeName) -Force
 
+    Ensure-PiperWindows
     Copy-DirectoryContents (Join-Path $ProjectDir "bin\piper-windows\piper") (Join-Path $outputDir "ttsengine")
 
     Ensure-AdbWindows
@@ -343,6 +425,7 @@ function Build-WindowsGui {
     Ensure-FfmpegWindows
     Copy-Item -LiteralPath (Join-Path $ProjectDir "bin\ffmpeg-windows\ffmpeg.exe") -Destination (Join-Path $outputDir "ffmpeg\ffmpeg.exe") -Force
 
+    Ensure-PiperModel
     Copy-Glob (Join-Path $ProjectDir "models\*.onnx") (Join-Path $outputDir "models")
     Copy-Glob (Join-Path $ProjectDir "models\*.json") (Join-Path $outputDir "models")
 

@@ -893,12 +893,12 @@
                     <span class="section-title">命令执行</span>
                 </div>
 
-                <div class="alert alert-info" style="font-size:13px;">这里执行的命令只会调用程序目录或当前目录下的 <code>adb/adb.exe</code>，不会读取系统 PATH。可直接输入 <code>adb devices</code>，也可只输入 <code>devices</code>。如果选择了设备且命令里没有 <code>-s</code>，系统会自动追加。</div>
+                <div class="alert alert-info" style="font-size:13px;">这里执行的命令只会调用程序目录或当前目录下的 <code>adb/adb.exe</code>，不会读取系统 PATH。可直接输入 <code>adb devices</code>，也可只输入 <code>devices</code>。设备类命令未指定目标时，单设备会自动追加 <code>-s</code>，多设备会对每台设备依次执行。</div>
 
                 <div class="form-group">
                     <label for="devCommandDevice">目标设备（可选）</label>
                     <select id="devCommandDevice" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
-                        <option value="">-- 不指定，由命令自行决定 --</option>
+                        <option value="">-- 自动选择/多设备全部执行 --</option>
                     </select>
                 </div>
 
@@ -919,6 +919,92 @@
 
                 <div class="status-text" id="devCommandStatus"></div>
                 <div class="output-console" id="devCommandOutput"></div>
+
+                <div class="section-header" style="margin-top:25px;">
+                    <span class="section-title">日志查看</span>
+                </div>
+
+                <div class="alert alert-info" style="font-size:13px;">用于快速查看设备 logcat。填写应用包名后会优先使用 <code>pidof &lt;package&gt;</code> 和 <code>logcat --pid</code> 查询当前进程日志；应用未运行或设备不支持时会回退到包名文本过滤。</div>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="devLogDevice">目标设备</label>
+                        <select id="devLogDevice" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+                            <option value="">-- 自动选择唯一设备 --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="devLogPackage">应用包名（可选）</label>
+                        <input id="devLogPackage" list="devLogPackageList" placeholder="如：com.example.app">
+                        <datalist id="devLogPackageList"></datalist>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="devLogBuffer">日志缓冲区</label>
+                        <select id="devLogBuffer" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+                            <option value="all">all - 全部</option>
+                            <option value="main">main - 应用日志</option>
+                            <option value="system">system - 系统日志</option>
+                            <option value="crash">crash - 崩溃日志</option>
+                            <option value="events">events - 事件日志</option>
+                            <option value="radio">radio - 通信日志</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="devLogLevel">最低级别</label>
+                        <select id="devLogLevel" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+                            <option value="">全部级别</option>
+                            <option value="V">Verbose</option>
+                            <option value="D">Debug</option>
+                            <option value="I">Info</option>
+                            <option value="W">Warn</option>
+                            <option value="E">Error</option>
+                            <option value="F">Fatal</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="devLogLines">最近行数</label>
+                        <input id="devLogLines" type="number" min="50" max="5000" step="50" value="300">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="devLogKeyword">关键字（可选）</label>
+                    <input id="devLogKeyword" placeholder="如：FATAL EXCEPTION、ActivityTaskManager、业务关键字">
+                </div>
+
+                <div class="command-panel">
+                    <div class="command-list">
+                        <label class="command-item">
+                            <input type="checkbox" id="devLogUsePid" checked>
+                            <span>
+                                <span class="command-name">pidof &lt;package&gt; + logcat --pid</span>
+                                <span class="command-desc">适合查看某个 APK 当前运行进程的日志；无包名时自动跳过。</span>
+                            </span>
+                        </label>
+                        <label class="command-item">
+                            <input type="checkbox" id="devLogSaveToFile">
+                            <span>
+                                <span class="command-name">保存到 output/logcat</span>
+                                <span class="command-desc">把本次查询结果保存为 txt，便于分享和留存。</span>
+                            </span>
+                        </label>
+                    </div>
+                    <button class="btn btn-primary command-action" id="devQueryLogBtn" onclick="devQueryLogcat()">查询日志</button>
+                </div>
+
+                <div class="btn-group" style="margin-top:15px;">
+                    <button class="btn btn-secondary" onclick="devLoadLogPackages()">加载包名</button>
+                    <button class="btn btn-secondary" onclick="devQueryLogcat('errors')">只看错误</button>
+                    <button class="btn btn-secondary" onclick="devQueryLogcat('crash')">崩溃日志</button>
+                    <button class="btn btn-danger" id="devClearLogBtn" onclick="devClearLogcat()">清空日志</button>
+                    <button class="btn btn-secondary" onclick="devOpenLogDir()">打开日志目录</button>
+                </div>
+
+                <div class="status-text" id="devLogStatus"></div>
+                <div class="output-console" id="devLogOutput"></div>
             </div>
 
             <!-- 启动时间测试 -->
@@ -1542,6 +1628,7 @@
                 devRenderList();
                 devSyncCommandDeviceSelect();
                 devSyncRecordDeviceSelect();
+                devSyncLogDeviceSelect();
                 perfSyncDeviceSelect();
                 playSyncDeviceSelect();
                 if (globalDevices.length > 0) {
@@ -1792,7 +1879,7 @@
         function devSyncCommandDeviceSelect() {
             const select = document.getElementById('devCommandDevice');
             const prev = select.value;
-            select.innerHTML = '<option value="">-- 不指定，由命令自行决定 --</option>';
+            select.innerHTML = '<option value="">-- 自动选择/多设备全部执行 --</option>';
             globalDevices.forEach(device => {
                 const option = document.createElement('option');
                 option.value = device;
@@ -1857,6 +1944,154 @@
             else if (type === 'info') line.classList.add('info');
             line.textContent = '[' + perfFormatTime(Date.now()) + '] ' + message;
             outputConsole.appendChild(line);
+            outputConsole.scrollTop = outputConsole.scrollHeight;
+        }
+
+        function devSyncLogDeviceSelect() {
+            const select = document.getElementById('devLogDevice');
+            if (!select) return;
+            const prev = select.value;
+            select.innerHTML = '<option value="">-- 自动选择唯一设备 --</option>';
+            globalDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device;
+                option.textContent = device;
+                select.appendChild(option);
+            });
+            if (prev && globalDevices.includes(prev)) {
+                select.value = prev;
+            } else if (globalDevices.length === 1) {
+                select.value = globalDevices[0];
+            }
+        }
+
+        function devGetLogOptions(preset) {
+            const buffer = document.getElementById('devLogBuffer').value || 'all';
+            const level = document.getElementById('devLogLevel').value || '';
+            const lines = parseInt(document.getElementById('devLogLines').value, 10) || 300;
+            const opts = {
+                packageName: document.getElementById('devLogPackage').value.trim(),
+                keyword: document.getElementById('devLogKeyword').value.trim(),
+                lines,
+                buffers: [buffer],
+                minLevel: level,
+                usePid: document.getElementById('devLogUsePid').checked,
+                saveToFile: document.getElementById('devLogSaveToFile').checked
+            };
+            if (preset === 'errors') {
+                opts.minLevel = 'E';
+            } else if (preset === 'crash') {
+                opts.buffers = ['crash'];
+                opts.minLevel = 'E';
+                opts.usePid = false;
+            }
+            return opts;
+        }
+
+        function devResolveLogSerial() {
+            const selected = document.getElementById('devLogDevice').value;
+            if (selected) return selected;
+            if (globalDevices.length === 1) return globalDevices[0];
+            return '';
+        }
+
+        async function devLoadLogPackages() {
+            const serial = devResolveLogSerial();
+            const statusEl = document.getElementById('devLogStatus');
+            if (!serial) {
+                alert('请先选择目标设备');
+                return;
+            }
+            statusEl.textContent = '正在加载包名...';
+            try {
+                const packages = await window.go.main.App.GetDevicePackages(serial);
+                const datalist = document.getElementById('devLogPackageList');
+                datalist.innerHTML = '';
+                (packages || []).forEach(pkg => {
+                    const option = document.createElement('option');
+                    option.value = pkg;
+                    datalist.appendChild(option);
+                });
+                statusEl.textContent = '已加载 ' + (packages || []).length + ' 个包名，可在应用包名输入框中搜索';
+            } catch (e) {
+                statusEl.textContent = '加载包名失败: ' + e;
+            }
+        }
+
+        async function devQueryLogcat(preset) {
+            const serial = devResolveLogSerial();
+            const btn = document.getElementById('devQueryLogBtn');
+            const statusEl = document.getElementById('devLogStatus');
+            const opts = devGetLogOptions(preset);
+            btn.disabled = true;
+            btn.textContent = '查询中...';
+            statusEl.textContent = preset === 'crash' ? '正在查询崩溃日志...' : '正在查询日志...';
+            try {
+                const result = await window.go.main.App.QueryLogcat(serial, opts);
+                devRenderLogcatResult(result);
+                statusEl.textContent = result.message || (result.success ? '日志查询完成' : '日志查询失败');
+            } catch (e) {
+                statusEl.textContent = '日志查询失败: ' + e;
+                devSetLogOutput('日志查询异常: ' + e);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '查询日志';
+            }
+        }
+
+        async function devClearLogcat() {
+            const serial = devResolveLogSerial();
+            const buffer = document.getElementById('devLogBuffer').value || 'all';
+            const btn = document.getElementById('devClearLogBtn');
+            const statusEl = document.getElementById('devLogStatus');
+            if (!serial) {
+                alert('请先选择目标设备');
+                return;
+            }
+            if (!confirm('确认清空目标设备的 logcat 日志？')) {
+                return;
+            }
+            btn.disabled = true;
+            statusEl.textContent = '正在清空日志...';
+            try {
+                const result = await window.go.main.App.ClearDeviceLogcat(serial, [buffer]);
+                statusEl.textContent = result.message;
+                devSetLogOutput('$ ' + (result.command || 'adb logcat -c') + '\n' + (result.output || result.message));
+            } catch (e) {
+                statusEl.textContent = '清空日志失败: ' + e;
+                devSetLogOutput('清空日志异常: ' + e);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function devOpenLogDir() {
+            try {
+                const dir = await window.go.main.App.GetLogcatOutputDir();
+                await window.go.main.App.OpenDirectory(dir);
+            } catch (e) {
+                alert('打开日志目录失败: ' + e);
+            }
+        }
+
+        function devRenderLogcatResult(result) {
+            const lines = [];
+            if (result.command) lines.push('$ ' + result.command);
+            if (result.serial) lines.push('设备: ' + result.serial);
+            if (result.packageName) {
+                lines.push('包名: ' + result.packageName + (result.usedPid && result.pid ? '，PID: ' + result.pid : ''));
+            }
+            lines.push('匹配行数: ' + (result.matchedLines || 0) + ' / ' + (result.totalLines || 0));
+            if (result.filePath) lines.push('保存文件: ' + result.filePath);
+            lines.push('');
+            lines.push(result.output || result.message || '(无输出)');
+            devSetLogOutput(lines.join('\n'));
+        }
+
+        function devSetLogOutput(text) {
+            const outputConsole = document.getElementById('devLogOutput');
+            outputConsole.classList.add('active');
+            outputConsole.textContent = '[' + perfFormatTime(Date.now()) + '] ' + text;
             outputConsole.scrollTop = outputConsole.scrollHeight;
         }
 

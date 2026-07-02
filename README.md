@@ -37,11 +37,11 @@ voice-qa/
 │   ├── tts/                # TTS 引擎 (Edge TTS / Piper)
 │   ├── adb/                # ADB 操作（logcat、截图）
 │   └── perfetto/           # 启动时间 trace、logcat 分析和报告生成
-├── bin/
+├── bin/                    # 构建时自动下载的本地工具缓存（不提交）
 │   ├── piper/              # Linux Piper 引擎
 │   ├── piper-windows/      # Windows Piper 引擎
 │   └── adb-windows/        # Windows ADB 工具
-├── models/                 # 语音模型
+├── models/                 # 构建时自动下载的语音模型缓存（不提交）
 ├── scripts/
 │   ├── build.sh            # 构建脚本
 │   └── download.sh         # 下载 Piper 和模型
@@ -93,7 +93,48 @@ scripts\build.bat -Target gui
 
 > 注意：`gui/frontend/dist/index.html` 虽然位于 `dist` 目录下，但它是 Wails 通过 `go:embed all:frontend/dist` 嵌入的 GUI 页面。当前仓库没有独立前端源码，因此该文件必须纳入版本控制；否则其它电脑克隆后无法复现 Windows GUI 构建。
 
-### 3. 使用
+### 3. 构建依赖自动下载
+
+Windows GUI 打包会在缺少资源时自动下载并缓存到本地 `bin/`、`models/`，然后再放进最终 zip。`bin/`、`models/`、`dist/` 都是构建产物或三方二进制缓存，不提交到 Git。
+
+默认下载源：
+
+| 文件 | 用途 |
+|------|------|
+| `platform-tools-latest-windows.zip` | Windows ADB |
+| `ffmpeg-master-latest-win64-gpl.zip` | Windows ffmpeg |
+| `piper_windows_amd64.zip` | Windows Piper 离线 TTS 引擎 |
+| `zh_CN-huayan-medium.onnx` | Piper 中文模型 |
+| `zh_CN-huayan-medium.onnx.json` | Piper 中文模型配置 |
+
+打包平台能访问外网时，直接运行构建命令即可，脚本会从官方源补齐缺失文件。
+
+如果官方源访问不稳定，可以把以上 5 个文件上传到一个打包平台可访问的公网地址，例如 GitHub Release、对象存储或公司制品库。目录下文件名保持不变：
+
+```text
+https://example.com/voice-qa-assets/platform-tools-latest-windows.zip
+https://example.com/voice-qa-assets/ffmpeg-master-latest-win64-gpl.zip
+https://example.com/voice-qa-assets/piper_windows_amd64.zip
+https://example.com/voice-qa-assets/zh_CN-huayan-medium.onnx
+https://example.com/voice-qa-assets/zh_CN-huayan-medium.onnx.json
+```
+
+然后按下面方式指定资产根地址：
+
+```powershell
+.\scripts\build.ps1 -Target gui -AssetBaseUrl https://example.com/voice-qa-assets
+```
+
+也可以用环境变量，适合 CI 或固定构建机：
+
+```powershell
+$env:VOICE_QA_ASSET_BASE_URL = "https://example.com/voice-qa-assets"
+.\scripts\build.ps1 -Target gui
+```
+
+需要确认本机缓存是否齐全但不希望脚本联网时，加 `-SkipDownload`；资源缺失会直接失败。
+
+### 4. 使用
 
 ```bash
 # 生成默认配置文件 config.json
@@ -296,7 +337,7 @@ GUI 版本基于 Wails 框架开发，提供完整图形界面，包含 6 个功
 
 | 标签页 | 功能 |
 |--------|------|
-| **设备管理** | ADB 设备连接/断开（支持 IP 连接），多设备 APK 安装，手动录屏到 `output/recordings` |
+| **设备管理** | ADB 设备连接/断开（支持 IP 连接），多设备 APK 安装，手动录屏到 `output/recordings`，按 APK 包名查询/清空/保存 logcat |
 | **启动时间测试** | 应用冷启动计时（毫秒精度），支持 Component 候选下拉、命令式应用控制、可选 Perfetto trace、logcat 时间线、单次/批量统计和聚合报告 |
 | **生成语音** | 文本列表管理，批量 TTS 生成，实时进度（支持中途停止） |
 | **播放模式** | 选择目标设备后执行播放测试，自动采集 logcat / 截图 / 录屏并输出独立会话目录（支持中途停止） |

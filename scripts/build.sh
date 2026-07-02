@@ -18,8 +18,51 @@ mkdir -p "$DIST_DIR"
 # 版本信息 (格式: YYYY.MMDD.HHMM)
 VERSION="${VERSION:-$(date +%Y.%m%d.%H%M)}"
 APP_NAME="tts"
+SKIP_DOWNLOAD="${SKIP_DOWNLOAD:-0}"
+ASSET_BASE_URL="${VOICE_QA_ASSET_BASE_URL:-}"
+
+PIPER_VERSION="2023.11.14-2"
+PIPER_WIN_ARCHIVE="piper_windows_amd64.zip"
+PIPER_WIN_URL="https://github.com/rhasspy/piper/releases/download/${PIPER_VERSION}/${PIPER_WIN_ARCHIVE}"
+MODEL_NAME="zh_CN-huayan-medium"
+MODEL_FILE="${MODEL_NAME}.onnx"
+MODEL_CONFIG_FILE="${MODEL_NAME}.onnx.json"
+MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/zh/zh_CN/huayan/medium/${MODEL_FILE}"
+MODEL_CONFIG_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/zh/zh_CN/huayan/medium/${MODEL_CONFIG_FILE}"
+ADB_WIN_ARCHIVE="platform-tools-latest-windows.zip"
+ADB_WIN_URL="https://dl.google.com/android/repository/${ADB_WIN_ARCHIVE}"
+FFMPEG_WIN_ARCHIVE="ffmpeg-master-latest-win64-gpl.zip"
+FFMPEG_WIN_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_WIN_ARCHIVE}"
 
 echo "=== 构建 Text-to-Speech v$VERSION ==="
+
+asset_url() {
+    local default_url="$1"
+    local asset_name="$2"
+    if [ -n "$ASSET_BASE_URL" ]; then
+        printf "%s/%s" "${ASSET_BASE_URL%/}" "$asset_name"
+    else
+        printf "%s" "$default_url"
+    fi
+}
+
+download_asset() {
+    local default_url="$1"
+    local asset_name="$2"
+    local output_path="$3"
+    local url
+    url="$(asset_url "$default_url" "$asset_name")"
+    echo "下载: $url"
+    curl -fL -o "$output_path" "$url"
+}
+
+require_download_allowed() {
+    local missing_path="$1"
+    if [ "$SKIP_DOWNLOAD" = "1" ]; then
+        echo "缺少 $missing_path，且 SKIP_DOWNLOAD=1"
+        exit 1
+    fi
+}
 
 # 构建 Linux amd64
 build_linux() {
@@ -58,13 +101,13 @@ download_adb_windows() {
         echo "adb 已存在，跳过下载"
         return 0
     fi
+    require_download_allowed "$ADB_DIR/adb.exe"
 
     echo "下载 Windows adb..."
     mkdir -p "$ADB_DIR"
-    local ADB_URL="https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
     local ADB_ZIP="$ADB_DIR/platform-tools.zip"
 
-    curl -L -o "$ADB_ZIP" "$ADB_URL"
+    download_asset "$ADB_WIN_URL" "$ADB_WIN_ARCHIVE" "$ADB_ZIP"
     unzip -q "$ADB_ZIP" -d "$ADB_DIR"
     mv "$ADB_DIR/platform-tools"/* "$ADB_DIR/"
     rmdir "$ADB_DIR/platform-tools"
@@ -79,18 +122,77 @@ download_ffmpeg_windows() {
         echo "ffmpeg 已存在，跳过下载"
         return 0
     fi
+    require_download_allowed "$FFMPEG_DIR/ffmpeg.exe"
 
     echo "下载 Windows ffmpeg..."
     mkdir -p "$FFMPEG_DIR"
-    local FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
     local FFMPEG_ZIP="$FFMPEG_DIR/ffmpeg.zip"
+    local FFMPEG_EXTRACT="$FFMPEG_DIR/ffmpeg-extract"
 
-    curl -L -o "$FFMPEG_ZIP" "$FFMPEG_URL"
-    unzip -q "$FFMPEG_ZIP" -d "$FFMPEG_DIR"
-    mv "$FFMPEG_DIR"/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe "$FFMPEG_DIR/"
-    rm -rf "$FFMPEG_DIR"/ffmpeg-master-latest-win64-gpl
+    rm -rf "$FFMPEG_EXTRACT"
+    download_asset "$FFMPEG_WIN_URL" "$FFMPEG_WIN_ARCHIVE" "$FFMPEG_ZIP"
+    unzip -q "$FFMPEG_ZIP" -d "$FFMPEG_EXTRACT"
+    local DOWNLOADED_EXE
+    DOWNLOADED_EXE="$(find "$FFMPEG_EXTRACT" -name ffmpeg.exe -print -quit)"
+    if [ -z "$DOWNLOADED_EXE" ]; then
+        echo "下载包中未找到 ffmpeg.exe"
+        exit 1
+    fi
+    cp "$DOWNLOADED_EXE" "$FFMPEG_DIR/ffmpeg.exe"
+    rm -rf "$FFMPEG_EXTRACT"
     rm "$FFMPEG_ZIP"
     echo "ffmpeg 下载完成"
+}
+
+download_piper_windows() {
+    local PIPER_ROOT="$PROJECT_DIR/bin/piper-windows"
+    local PIPER_DIR="$PIPER_ROOT/piper"
+    if [ -f "$PIPER_DIR/piper.exe" ]; then
+        echo "Windows piper 已存在，跳过下载"
+        return 0
+    fi
+    require_download_allowed "$PIPER_DIR/piper.exe"
+
+    echo "下载 Windows piper..."
+    mkdir -p "$PIPER_DIR"
+    local PIPER_ZIP="$PIPER_ROOT/$PIPER_WIN_ARCHIVE"
+    local PIPER_EXTRACT="$PIPER_ROOT/piper-extract"
+
+    rm -rf "$PIPER_EXTRACT"
+    download_asset "$PIPER_WIN_URL" "$PIPER_WIN_ARCHIVE" "$PIPER_ZIP"
+    unzip -q "$PIPER_ZIP" -d "$PIPER_EXTRACT"
+    local DOWNLOADED_EXE
+    DOWNLOADED_EXE="$(find "$PIPER_EXTRACT" -name piper.exe -print -quit)"
+    if [ -z "$DOWNLOADED_EXE" ]; then
+        echo "下载包中未找到 piper.exe"
+        exit 1
+    fi
+    cp -R "$(dirname "$DOWNLOADED_EXE")"/. "$PIPER_DIR/"
+    rm -rf "$PIPER_EXTRACT"
+    rm "$PIPER_ZIP"
+    echo "Windows piper 下载完成"
+}
+
+download_piper_model() {
+    local MODELS_DIR="$PROJECT_DIR/models"
+    local MODEL_PATH="$MODELS_DIR/$MODEL_FILE"
+    local MODEL_CONFIG_PATH="$MODELS_DIR/$MODEL_CONFIG_FILE"
+
+    if [ -f "$MODEL_PATH" ] && [ -f "$MODEL_CONFIG_PATH" ]; then
+        echo "Piper 模型已存在，跳过下载"
+        return 0
+    fi
+    require_download_allowed "$MODELS_DIR/$MODEL_FILE"
+
+    mkdir -p "$MODELS_DIR"
+    if [ ! -f "$MODEL_PATH" ]; then
+        echo "下载 Piper 中文模型..."
+        download_asset "$MODEL_URL" "$MODEL_FILE" "$MODEL_PATH"
+    fi
+    if [ ! -f "$MODEL_CONFIG_PATH" ]; then
+        echo "下载 Piper 中文模型配置..."
+        download_asset "$MODEL_CONFIG_URL" "$MODEL_CONFIG_FILE" "$MODEL_CONFIG_PATH"
+    fi
 }
 
 # 构建 Windows amd64
@@ -101,11 +203,10 @@ build_windows() {
 
     GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o "$OUTPUT_DIR/${APP_NAME}.exe" ./cmd
 
-    # 复制 Windows 版 piper 到 ttsengine 目录
-    if [ -d "$PROJECT_DIR/bin/piper-windows/piper" ]; then
-        mkdir -p "$OUTPUT_DIR/ttsengine"
-        cp -r "$PROJECT_DIR/bin/piper-windows/piper"/* "$OUTPUT_DIR/ttsengine/"
-    fi
+    # 下载并复制 Windows 版 piper 到 ttsengine 目录
+    download_piper_windows
+    mkdir -p "$OUTPUT_DIR/ttsengine"
+    cp -r "$PROJECT_DIR/bin/piper-windows/piper"/* "$OUTPUT_DIR/ttsengine/"
 
     # 下载并复制 adb
     download_adb_windows
@@ -123,7 +224,8 @@ build_windows() {
         cp "$PROJECT_DIR/bin/ffmpeg-windows/ffmpeg.exe" "$OUTPUT_DIR/ffmpeg/"
     fi
 
-    # 复制模型
+    # 下载并复制模型
+    download_piper_model
     cp "$PROJECT_DIR/models"/*.onnx "$OUTPUT_DIR/models/" 2>/dev/null || true
     cp "$PROJECT_DIR/models"/*.json "$OUTPUT_DIR/models/" 2>/dev/null || true
 
@@ -406,18 +508,16 @@ build_windows_gui() {
 
     cd "$PROJECT_DIR"
 
-    # 复制 Windows 版 piper 到 ttsengine 目录
-    if [ -d "$PROJECT_DIR/bin/piper-windows/piper" ]; then
-        mkdir -p "$OUTPUT_DIR/ttsengine"
-        cp -r "$PROJECT_DIR/bin/piper-windows/piper"/* "$OUTPUT_DIR/ttsengine/"
-    fi
+    # 下载并复制 Windows 版 piper 到 ttsengine 目录
+    download_piper_windows
+    mkdir -p "$OUTPUT_DIR/ttsengine"
+    cp -r "$PROJECT_DIR/bin/piper-windows/piper"/* "$OUTPUT_DIR/ttsengine/"
 
-    # 复制 adb
-    if [ -d "$PROJECT_DIR/bin/adb-windows" ]; then
-        cp "$PROJECT_DIR/bin/adb-windows/adb.exe" "$OUTPUT_DIR/adb/"
-        cp "$PROJECT_DIR/bin/adb-windows/AdbWinApi.dll" "$OUTPUT_DIR/adb/"
-        cp "$PROJECT_DIR/bin/adb-windows/AdbWinUsbApi.dll" "$OUTPUT_DIR/adb/"
-    fi
+    # 下载并复制 adb
+    download_adb_windows
+    cp "$PROJECT_DIR/bin/adb-windows/adb.exe" "$OUTPUT_DIR/adb/"
+    cp "$PROJECT_DIR/bin/adb-windows/AdbWinApi.dll" "$OUTPUT_DIR/adb/"
+    cp "$PROJECT_DIR/bin/adb-windows/AdbWinUsbApi.dll" "$OUTPUT_DIR/adb/"
 
     # 下载并复制 ffmpeg
     download_ffmpeg_windows
@@ -425,7 +525,8 @@ build_windows_gui() {
         cp "$PROJECT_DIR/bin/ffmpeg-windows/ffmpeg.exe" "$OUTPUT_DIR/ffmpeg/"
     fi
 
-    # 复制模型
+    # 下载并复制模型
+    download_piper_model
     cp "$PROJECT_DIR/models"/*.onnx "$OUTPUT_DIR/models/" 2>/dev/null || true
     cp "$PROJECT_DIR/models"/*.json "$OUTPUT_DIR/models/" 2>/dev/null || true
 

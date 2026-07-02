@@ -15,6 +15,7 @@ import (
 	"regexp"
 	goruntime "runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"voice-qa/internal/adb"
 	"voice-qa/internal/audio"
 	"voice-qa/internal/config"
+	"voice-qa/internal/logassert"
 	"voice-qa/internal/perfetto"
 	"voice-qa/internal/player"
 	"voice-qa/internal/tts"
@@ -923,6 +925,33 @@ type AdbCommandResult struct {
 	Output  string `json:"output"`
 }
 
+// LogcatQueryOptions logcat 查询选项。
+type LogcatQueryOptions struct {
+	PackageName string   `json:"packageName"`
+	Keyword     string   `json:"keyword"`
+	Lines       int      `json:"lines"`
+	Buffers     []string `json:"buffers"`
+	MinLevel    string   `json:"minLevel"`
+	UsePid      bool     `json:"usePid"`
+	SaveToFile  bool     `json:"saveToFile"`
+}
+
+// LogcatQueryResult logcat 查询结果。
+type LogcatQueryResult struct {
+	Success      bool   `json:"success"`
+	Message      string `json:"message"`
+	Command      string `json:"command"`
+	Output       string `json:"output"`
+	FilePath     string `json:"filePath"`
+	Dir          string `json:"dir"`
+	Serial       string `json:"serial"`
+	PackageName  string `json:"packageName"`
+	Pid          string `json:"pid"`
+	UsedPid      bool   `json:"usedPid"`
+	TotalLines   int    `json:"totalLines"`
+	MatchedLines int    `json:"matchedLines"`
+}
+
 // ManualRecordingResult 手动录屏操作结果
 type ManualRecordingResult struct {
 	Success    bool   `json:"success"`
@@ -955,10 +984,30 @@ func (a *App) RunAdbCommand(serial, commandText string) AdbCommandResult {
 		return AdbCommandResult{Success: false, Message: "请输入 adb 后面的命令参数"}
 	}
 
-	if serial != "" && !hasAdbSerialArg(args) {
+	if serial != "" && !hasAdbTargetArg(args) {
 		args = append([]string{"-s", serial}, args...)
+		return runAdbCommandArgs(args)
 	}
 
+	if serial == "" && !hasAdbTargetArg(args) && shouldAutoTargetAdbCommand(args) {
+		devices, err := a.GetConnectedDevices()
+		if err == nil {
+			switch len(devices) {
+			case 1:
+				args = append([]string{"-s", devices[0]}, args...)
+				return runAdbCommandArgs(args)
+			default:
+				if len(devices) > 1 {
+					return runAdbCommandForDevices(devices, args)
+				}
+			}
+		}
+	}
+
+	return runAdbCommandArgs(args)
+}
+
+func runAdbCommandArgs(args []string) AdbCommandResult {
 	cmd := adb.Command(args...)
 	hideConsoleWindow(cmd)
 	output, err := cmd.CombinedOutput()
@@ -990,10 +1039,393 @@ func (a *App) RunAdbCommand(serial, commandText string) AdbCommandResult {
 	}
 }
 
-func hasAdbSerialArg(args []string) bool {
-	for i := 0; i < len(args)-1; i++ {
-		if args[i] == "-s" && strings.TrimSpace(args[i+1]) != "" {
+func runAdbCommandForDevices(devices []string, args []string) AdbCommandResult {
+	var output strings.Builder
+	successCount := 0
+	for i, device := range devices {
+		deviceArgs := append([]string{"-s", device}, args...)
+		result := runAdbCommandArgs(deviceArgs)
+		if i > 0 {
+			output.WriteString("\n\n")
+		}
+		fmt.Fprintf(&output, "===== %s =====\n", device)
+		fmt.Fprintf(&output, "$ %s\n", result.Command)
+		if result.Output != "" {
+			output.WriteString(result.Output)
+		} else {
+			output.WriteString(result.Message)
+		}
+		if result.Success {
+			successCount++
+		} else if result.Message != "" && !strings.Contains(result.Output, result.Message) {
+			fmt.Fprintf(&output, "\n%s", result.Message)
+		}
+	}
+
+	success := successCount == len(devices)
+	message := fmt.Sprintf("已对 %d 台设备执行命令", len(devices))
+	if !success {
+		message = fmt.Sprintf("部分设备执行失败：%d/%d 成功", successCount, len(devices))
+	}
+
+	return AdbCommandResult{
+		Success: success,
+		Message: message,
+		Command: "adb " + strings.Join(args, " ") + "  # auto all devices",
+		Output:  strings.TrimSpace(output.String()),
+	}
+}
+
+func shouldAutoTargetAdbCommand(args []string) bool {
+	command := primaryAdbCommand(args)
+	if command == "" {
+		return false
+	}
+	switch command {
+	case "devices", "connect", "disconnect", "start-server", "kill-server", "version", "help", "keygen", "server-status", "reconnect", "track-devices", "mdns":
+		return false
+	default:
+		return true
+	}
+}
+
+func primaryAdbCommand(args []string) string {
+	for i := 0; i < len(args); i++ {
+		arg := strings.TrimSpace(args[i])
+		if arg == "" {
+			continue
+		}
+		switch arg {
+		case "-s", "-t", "-H", "-P", "-L":
+			i++
+			continue
+		case "-d", "-e", "-a":
+			continue
+		}
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		return strings.ToLower(arg)
+	}
+	return ""
+}
+
+// QueryLogcat 查询设备 logcat，可按包名 PID、包名文本和关键字过滤。
+func (a *App) QueryLogcat(serial string, opts LogcatQueryOptions) LogcatQueryResult {
+	resolvedSerial, err := a.resolveAdbDevice(serial)
+	if err != nil {
+		return LogcatQueryResult{Success: false, Message: err.Error()}
+	}
+
+	opts.PackageName = strings.TrimSpace(opts.PackageName)
+	opts.Keyword = strings.TrimSpace(opts.Keyword)
+	opts.Lines = normalizeLogcatLines(opts.Lines)
+	opts.Buffers = normalizeLogcatBuffers(opts.Buffers)
+	opts.MinLevel = normalizeLogcatLevel(opts.MinLevel)
+
+	pid := ""
+	if opts.UsePid && opts.PackageName != "" {
+		pid = a.findPackagePid(resolvedSerial, opts.PackageName)
+	}
+
+	raw, displayCmd, usedPid, err := a.runLogcatDump(resolvedSerial, opts, pid)
+	if err != nil && pid != "" {
+		raw, displayCmd, usedPid, err = a.runLogcatDump(resolvedSerial, opts, "")
+	}
+	if err != nil {
+		return LogcatQueryResult{
+			Success:     false,
+			Message:     err.Error(),
+			Command:     displayCmd,
+			Serial:      resolvedSerial,
+			PackageName: opts.PackageName,
+			Pid:         pid,
+		}
+	}
+
+	totalLines := countNonEmptyLines(raw)
+	requirePackageText := opts.PackageName != "" && !usedPid
+	output, matchedLines := filterLogcatOutput(raw, opts.PackageName, opts.Keyword, requirePackageText)
+	if strings.TrimSpace(output) == "" {
+		output = "(无匹配日志)"
+		matchedLines = 0
+	}
+
+	result := LogcatQueryResult{
+		Success:      true,
+		Message:      "日志查询完成",
+		Command:      displayCmd,
+		Output:       output,
+		Serial:       resolvedSerial,
+		PackageName:  opts.PackageName,
+		Pid:          pid,
+		UsedPid:      usedPid,
+		TotalLines:   totalLines,
+		MatchedLines: matchedLines,
+	}
+	if usedPid {
+		result.Message = fmt.Sprintf("日志查询完成，已按 PID %s 过滤", pid)
+	} else if opts.PackageName != "" {
+		result.Message = "日志查询完成，未获取到运行中 PID，已按包名文本过滤"
+	}
+
+	if opts.SaveToFile {
+		filePath, dir, err := a.saveLogcatQueryResult(result)
+		if err != nil {
+			result.Success = false
+			result.Message = fmt.Sprintf("日志查询完成，但保存失败: %v", err)
+			return result
+		}
+		result.FilePath = filePath
+		result.Dir = dir
+		result.Message += "，已保存到文件"
+	}
+
+	return result
+}
+
+// ClearDeviceLogcat 清空设备 logcat 缓冲区。
+func (a *App) ClearDeviceLogcat(serial string, buffers []string) AdbCommandResult {
+	resolvedSerial, err := a.resolveAdbDevice(serial)
+	if err != nil {
+		return AdbCommandResult{Success: false, Message: err.Error()}
+	}
+
+	normalizedBuffers := normalizeLogcatBuffers(buffers)
+	args := []string{"-s", resolvedSerial, "logcat"}
+	for _, buffer := range normalizedBuffers {
+		args = append(args, "-b", buffer)
+	}
+	args = append(args, "-c")
+	displayCmd := "adb " + strings.Join(args, " ")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := adb.CommandContext(ctx, args...)
+	hideConsoleWindow(cmd)
+	output, err := cmd.CombinedOutput()
+	outStr := strings.TrimSpace(string(output))
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return AdbCommandResult{Success: false, Message: "清空日志超时", Command: displayCmd, Output: outStr}
+		}
+		if len(normalizedBuffers) == 1 && normalizedBuffers[0] == "all" {
+			fallbackArgs := []string{"-s", resolvedSerial, "logcat", "-c"}
+			fallbackCmd := adb.Command(fallbackArgs...)
+			hideConsoleWindow(fallbackCmd)
+			fallbackOutput, fallbackErr := fallbackCmd.CombinedOutput()
+			fallbackOut := strings.TrimSpace(string(fallbackOutput))
+			if fallbackErr == nil {
+				return AdbCommandResult{Success: true, Message: "日志已清空", Command: "adb " + strings.Join(fallbackArgs, " "), Output: emptyAsDash(fallbackOut)}
+			}
+			return AdbCommandResult{Success: false, Message: fmt.Sprintf("清空日志失败: %s %v；fallback: %s %v", outStr, err, fallbackOut, fallbackErr), Command: displayCmd, Output: outStr}
+		}
+		return AdbCommandResult{Success: false, Message: fmt.Sprintf("清空日志失败: %s %v", outStr, err), Command: displayCmd, Output: outStr}
+	}
+
+	return AdbCommandResult{Success: true, Message: "日志已清空", Command: displayCmd, Output: emptyAsDash(outStr)}
+}
+
+func (a *App) GetLogcatOutputDir() string {
+	return filepath.Join(a.resolvedOutputDir(), "logcat")
+}
+
+func (a *App) runLogcatDump(serial string, opts LogcatQueryOptions, pid string) (string, string, bool, error) {
+	args := []string{"-s", serial, "logcat", "-d", "-v", "time"}
+	for _, buffer := range opts.Buffers {
+		args = append(args, "-b", buffer)
+	}
+	args = append(args, "-t", strconv.Itoa(opts.Lines))
+	usedPid := strings.TrimSpace(pid) != ""
+	if usedPid {
+		args = append(args, "--pid", pid)
+	}
+	if opts.MinLevel != "" {
+		args = append(args, "*:"+opts.MinLevel)
+	}
+	displayCmd := "adb " + strings.Join(args, " ")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := adb.CommandContext(ctx, args...)
+	hideConsoleWindow(cmd)
+	output, err := cmd.CombinedOutput()
+	outStr := strings.TrimRight(string(output), "\r\n")
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return outStr, displayCmd, usedPid, fmt.Errorf("查询日志超时")
+		}
+		return outStr, displayCmd, usedPid, fmt.Errorf("查询日志失败: %s %v", strings.TrimSpace(outStr), err)
+	}
+	return outStr, displayCmd, usedPid, nil
+}
+
+func (a *App) findPackagePid(serial, packageName string) string {
+	packageName = strings.TrimSpace(packageName)
+	if packageName == "" {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := adb.CommandContext(ctx, "-s", serial, "shell", "pidof", packageName)
+	hideConsoleWindow(cmd)
+	output, err := cmd.Output()
+	if err != nil || ctx.Err() != nil {
+		return ""
+	}
+	fields := strings.Fields(strings.TrimSpace(string(output)))
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+func (a *App) saveLogcatQueryResult(result LogcatQueryResult) (string, string, error) {
+	logDir := a.GetLogcatOutputDir()
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return "", logDir, err
+	}
+
+	nameParts := []string{"logcat", time.Now().Format("20060102-150405")}
+	if result.PackageName != "" {
+		if safePkg := sanitizeFileName(result.PackageName); safePkg != "" {
+			nameParts = append(nameParts, safePkg)
+		}
+	}
+	filePath := filepath.Join(logDir, strings.Join(nameParts, "-")+".txt")
+	var content strings.Builder
+	if result.Command != "" {
+		fmt.Fprintf(&content, "$ %s\n", result.Command)
+	}
+	fmt.Fprintf(&content, "device: %s\n", emptyAsDash(result.Serial))
+	if result.PackageName != "" {
+		fmt.Fprintf(&content, "package: %s\n", result.PackageName)
+	}
+	if result.Pid != "" {
+		fmt.Fprintf(&content, "pid: %s\n", result.Pid)
+	}
+	fmt.Fprintf(&content, "matched_lines: %d / %d\n\n", result.MatchedLines, result.TotalLines)
+	content.WriteString(result.Output)
+	if !strings.HasSuffix(result.Output, "\n") {
+		content.WriteString("\n")
+	}
+	if err := os.WriteFile(filePath, []byte(content.String()), 0644); err != nil {
+		return "", logDir, err
+	}
+	return filePath, logDir, nil
+}
+
+func normalizeLogcatLines(lines int) int {
+	if lines <= 0 {
+		return 300
+	}
+	if lines > 5000 {
+		return 5000
+	}
+	return lines
+}
+
+func normalizeLogcatBuffers(buffers []string) []string {
+	valid := map[string]bool{
+		"main":   true,
+		"system": true,
+		"crash":  true,
+		"events": true,
+		"radio":  true,
+		"all":    true,
+	}
+	var normalized []string
+	for _, buffer := range buffers {
+		buffer = strings.ToLower(strings.TrimSpace(buffer))
+		if !valid[buffer] {
+			continue
+		}
+		if buffer == "all" {
+			return []string{"all"}
+		}
+		if !containsString(normalized, buffer) {
+			normalized = append(normalized, buffer)
+		}
+	}
+	if len(normalized) == 0 {
+		return []string{"all"}
+	}
+	return normalized
+}
+
+func normalizeLogcatLevel(level string) string {
+	switch strings.ToUpper(strings.TrimSpace(level)) {
+	case "V", "D", "I", "W", "E", "F", "S":
+		return strings.ToUpper(strings.TrimSpace(level))
+	default:
+		return ""
+	}
+}
+
+func filterLogcatOutput(output, packageName, keyword string, requirePackage bool) (string, int) {
+	packageName = strings.ToLower(strings.TrimSpace(packageName))
+	keyword = strings.ToLower(strings.TrimSpace(keyword))
+	if strings.TrimSpace(output) == "" {
+		return "", 0
+	}
+	if !requirePackage && keyword == "" {
+		return strings.TrimRight(output, "\r\n"), countNonEmptyLines(output)
+	}
+
+	var b strings.Builder
+	matched := 0
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		lowerLine := strings.ToLower(line)
+		if requirePackage && packageName != "" && !strings.Contains(lowerLine, packageName) {
+			continue
+		}
+		if keyword != "" && !strings.Contains(lowerLine, keyword) {
+			continue
+		}
+		if matched > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(line)
+		matched++
+	}
+	return b.String(), matched
+}
+
+func countNonEmptyLines(output string) int {
+	count := 0
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		if strings.TrimSpace(scanner.Text()) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
 			return true
+		}
+	}
+	return false
+}
+
+func hasAdbTargetArg(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-d", "-e":
+			return true
+		case "-s", "-t":
+			if i+1 < len(args) && strings.TrimSpace(args[i+1]) != "" {
+				return true
+			}
+			i++
 		}
 	}
 	return false
@@ -3113,20 +3545,7 @@ func extractTextFromFileName(fileName string) string {
 }
 
 func assertLogContent(logFile, expectedQuery string) (bool, string) {
-	data, err := os.ReadFile(logFile)
-	if err != nil {
-		return false, fmt.Sprintf("无法读取日志文件: %v", err)
-	}
-
-	content := string(data)
-	expectedPattern := fmt.Sprintf(`"query":"%s"`, expectedQuery)
-	if strings.Contains(content, expectedPattern) {
-		return true, fmt.Sprintf("找到匹配: %s", expectedPattern)
-	}
-	if strings.Contains(content, `"nlpResult"`) {
-		return false, fmt.Sprintf("日志包含 nlpResult 但未找到 query=\"%s\"", expectedQuery)
-	}
-	return false, "日志中未找到 nlpResult 相关内容"
+	return logassert.AssertLogContent(logFile, expectedQuery)
 }
 
 func trimLogBeforeMarker(logFile, marker string) error {

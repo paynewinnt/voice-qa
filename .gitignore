@@ -3,7 +3,7 @@ dist/
 !gui/frontend/dist/
 !gui/frontend/dist/index.html
 gui/frontend/dist/wailsjs/
-tts
+/tts
 .build-tools/
 
 # Third-party binaries
