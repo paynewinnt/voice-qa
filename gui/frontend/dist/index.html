@@ -600,6 +600,79 @@
             align-self: stretch;
         }
 
+        .analysis-panel {
+            margin-top: 18px;
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin: 12px 0;
+        }
+
+        .analysis-stat {
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-muted);
+        }
+
+        .analysis-stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .analysis-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .analysis-device-title {
+            margin-top: 14px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-main);
+            overflow-wrap: anywhere;
+        }
+
+        .analysis-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+            font-size: 12px;
+        }
+
+        .analysis-table th,
+        .analysis-table td {
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            text-align: left;
+            vertical-align: top;
+            overflow-wrap: anywhere;
+        }
+
+        .analysis-table th {
+            background: var(--surface-muted);
+            color: var(--text-main);
+            font-weight: 700;
+        }
+
+        .analysis-empty {
+            margin-top: 8px;
+            padding: 10px 12px;
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
         @media (max-width: 760px) {
             .perf-capability-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -620,6 +693,10 @@
 
             .command-action {
                 min-height: 44px;
+            }
+
+            .analysis-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
 
@@ -1005,6 +1082,53 @@
 
                 <div class="status-text" id="devLogStatus"></div>
                 <div class="output-console" id="devLogOutput"></div>
+
+                <div class="analysis-panel">
+                    <div class="section-header" style="margin-bottom:12px;">
+                        <span class="section-title">心跳与弹窗分析</span>
+                    </div>
+                    <div class="alert alert-info" style="font-size:13px;">用于分析 <code>com.zjdx.neuralnexus</code> 的心跳上报和悬浮弹窗显示记录。弹窗时间以日志中的 <code>悬浮弹窗已获取焦点</code> 为准。</div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="devAnalysisDevice">目标设备</label>
+                            <select id="devAnalysisDevice" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+                                <option value="__all__">-- 全部设备 --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="devAnalysisPackage">应用包名</label>
+                            <input id="devAnalysisPackage" value="com.zjdx.neuralnexus" placeholder="com.zjdx.neuralnexus">
+                        </div>
+                        <div class="form-group">
+                            <label for="devAnalysisLines">最近行数</label>
+                            <input id="devAnalysisLines" type="number" min="500" max="100000" step="500" value="10000">
+                        </div>
+                    </div>
+
+                    <div class="command-panel">
+                        <div class="command-list">
+                            <label class="command-item">
+                                <input type="checkbox" id="devAnalysisUsePid" checked>
+                                <span>
+                                    <span class="command-name">pidof + logcat --pid</span>
+                                    <span class="command-desc">优先按当前进程过滤，减少其它应用日志干扰；应用未运行时自动回退。</span>
+                                </span>
+                            </label>
+                            <label class="command-item">
+                                <input type="checkbox" id="devAnalysisSaveToFile">
+                                <span>
+                                    <span class="command-name">保存分析报告</span>
+                                    <span class="command-desc">将心跳和弹窗分析结果保存到 output/logcat。</span>
+                                </span>
+                            </label>
+                        </div>
+                        <button class="btn btn-primary command-action" id="devAnalyzeHeartbeatPopupBtn" onclick="devAnalyzeHeartbeatPopup()">查询分析</button>
+                    </div>
+
+                    <div class="status-text" id="devAnalysisStatus"></div>
+                    <div id="devAnalysisResult"></div>
+                </div>
             </div>
 
             <!-- 启动时间测试 -->
@@ -1629,6 +1753,7 @@
                 devSyncCommandDeviceSelect();
                 devSyncRecordDeviceSelect();
                 devSyncLogDeviceSelect();
+                devSyncAnalysisDeviceSelect();
                 perfSyncDeviceSelect();
                 playSyncDeviceSelect();
                 if (globalDevices.length > 0) {
@@ -1965,6 +2090,24 @@
             }
         }
 
+        function devSyncAnalysisDeviceSelect() {
+            const select = document.getElementById('devAnalysisDevice');
+            if (!select) return;
+            const prev = select.value || '__all__';
+            select.innerHTML = '<option value="__all__">-- 全部设备 --</option>';
+            globalDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device;
+                option.textContent = device;
+                select.appendChild(option);
+            });
+            if (prev === '__all__' || globalDevices.includes(prev)) {
+                select.value = prev;
+            } else {
+                select.value = '__all__';
+            }
+        }
+
         function devGetLogOptions(preset) {
             const buffer = document.getElementById('devLogBuffer').value || 'all';
             const level = document.getElementById('devLogLevel').value || '';
@@ -2093,6 +2236,115 @@
             outputConsole.classList.add('active');
             outputConsole.textContent = '[' + perfFormatTime(Date.now()) + '] ' + text;
             outputConsole.scrollTop = outputConsole.scrollHeight;
+        }
+
+        async function devAnalyzeHeartbeatPopup() {
+            const serial = document.getElementById('devAnalysisDevice').value || '__all__';
+            const btn = document.getElementById('devAnalyzeHeartbeatPopupBtn');
+            const statusEl = document.getElementById('devAnalysisStatus');
+            const resultEl = document.getElementById('devAnalysisResult');
+            const opts = {
+                packageName: document.getElementById('devAnalysisPackage').value.trim() || 'com.zjdx.neuralnexus',
+                lines: parseInt(document.getElementById('devAnalysisLines').value, 10) || 10000,
+                buffers: ['all'],
+                usePid: document.getElementById('devAnalysisUsePid').checked,
+                saveToFile: document.getElementById('devAnalysisSaveToFile').checked
+            };
+
+            btn.disabled = true;
+            btn.textContent = '分析中...';
+            statusEl.textContent = serial === '__all__' ? '正在分析全部设备...' : '正在分析 ' + serial + '...';
+            resultEl.innerHTML = '';
+            try {
+                const result = await window.go.main.App.AnalyzeHeartbeatPopupLogs(serial, opts);
+                statusEl.textContent = result.message || (result.success ? '分析完成' : '分析失败');
+                devRenderHeartbeatPopupAnalysis(result);
+            } catch (e) {
+                statusEl.textContent = '分析失败: ' + e;
+                resultEl.innerHTML = '<div class="analysis-empty">分析异常：' + devEscapeHtml(String(e)) + '</div>';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '查询分析';
+            }
+        }
+
+        function devRenderHeartbeatPopupAnalysis(result) {
+            const resultEl = document.getElementById('devAnalysisResult');
+            const devices = result.devices || [];
+            const parts = [];
+            parts.push(`<div class="analysis-grid">
+                <div class="analysis-stat"><div class="analysis-stat-label">设备数</div><div class="analysis-stat-value">${devices.length}</div></div>
+                <div class="analysis-stat"><div class="analysis-stat-label">心跳记录</div><div class="analysis-stat-value">${result.totalHeartbeats || 0}</div></div>
+                <div class="analysis-stat"><div class="analysis-stat-label">弹窗次数</div><div class="analysis-stat-value">${result.totalPopups || 0}</div></div>
+                <div class="analysis-stat"><div class="analysis-stat-label">包名</div><div class="analysis-stat-value" style="font-size:13px;">${devEscapeHtml(result.packageName || '')}</div></div>
+            </div>`);
+            if (result.filePath) {
+                parts.push(`<div class="analysis-empty">分析报告：${devEscapeHtml(result.filePath)}</div>`);
+            }
+            if (!devices.length) {
+                parts.push('<div class="analysis-empty">没有设备分析结果。</div>');
+                resultEl.innerHTML = parts.join('');
+                return;
+            }
+
+            devices.forEach(device => {
+                parts.push(`<div class="analysis-device-title">${devEscapeHtml(device.serial || '-')}: ${devEscapeHtml(device.message || '')}</div>`);
+                if (device.command) {
+                    parts.push(`<div class="command-desc">${devEscapeHtml(device.command)}</div>`);
+                }
+                if (device.nextCheckAt) {
+                    parts.push(`<div class="command-desc">下次弹窗检查：${devEscapeHtml(device.nextCheckAt)}</div>`);
+                }
+                parts.push(devRenderHeartbeatTable(device.heartbeats || []));
+                parts.push(devRenderPopupTable(device.popups || []));
+            });
+            resultEl.innerHTML = parts.join('');
+        }
+
+        function devRenderHeartbeatTable(heartbeats) {
+            if (!heartbeats.length) {
+                return '<div class="analysis-empty">未找到心跳日志。</div>';
+            }
+            const rows = heartbeats.map(item => `<tr>
+                <td>${devEscapeHtml(item.time || '')}</td>
+                <td>${devEscapeHtml(item.direction || '')}</td>
+                <td>${devEscapeHtml(item.resultType || '')}</td>
+                <td>${devEscapeHtml(item.taskId || '')}</td>
+                <td>${devEscapeHtml(item.devId || '')}</td>
+                <td>${devEscapeHtml(item.url || '')}</td>
+            </tr>`).join('');
+            return `<table class="analysis-table">
+                <thead><tr><th>心跳时间</th><th>方向</th><th>结果</th><th>taskId</th><th>devId</th><th>URL</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+        }
+
+        function devRenderPopupTable(popups) {
+            if (!popups.length) {
+                return '<div class="analysis-empty">未找到弹窗显示记录。</div>';
+            }
+            const rows = popups.map(item => `<tr>
+                <td>${devEscapeHtml(item.focusTime || '')}</td>
+                <td>${devEscapeHtml(item.title || '')}</td>
+                <td>${devEscapeHtml(item.planId || '')}</td>
+                <td>${devEscapeHtml(item.createTime || '')}</td>
+                <td>${devEscapeHtml(item.prepareTime || '')}</td>
+                <td>${devEscapeHtml(item.triggerTime || '')}</td>
+                <td>${devEscapeHtml(item.scheduledAt || '')}</td>
+            </tr>`).join('');
+            return `<table class="analysis-table">
+                <thead><tr><th>实际弹窗时间</th><th>标题</th><th>planId</th><th>创建窗口</th><th>准备弹窗</th><th>触发日志</th><th>计划时间</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+        }
+
+        function devEscapeHtml(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         let perfAllPackages = [];

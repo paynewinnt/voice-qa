@@ -952,6 +952,66 @@ type LogcatQueryResult struct {
 	MatchedLines int    `json:"matchedLines"`
 }
 
+// HeartbeatPopupAnalysisOptions 心跳和弹窗日志分析选项。
+type HeartbeatPopupAnalysisOptions struct {
+	PackageName string   `json:"packageName"`
+	Lines       int      `json:"lines"`
+	Buffers     []string `json:"buffers"`
+	UsePid      bool     `json:"usePid"`
+	SaveToFile  bool     `json:"saveToFile"`
+}
+
+// HeartbeatPopupAnalysisResult 心跳和弹窗日志分析汇总。
+type HeartbeatPopupAnalysisResult struct {
+	Success         bool                                 `json:"success"`
+	Message         string                               `json:"message"`
+	PackageName     string                               `json:"packageName"`
+	Devices         []DeviceHeartbeatPopupAnalysisResult `json:"devices"`
+	TotalHeartbeats int                                  `json:"totalHeartbeats"`
+	TotalPopups     int                                  `json:"totalPopups"`
+	FilePath        string                               `json:"filePath"`
+	Dir             string                               `json:"dir"`
+}
+
+// DeviceHeartbeatPopupAnalysisResult 单台设备心跳和弹窗日志分析结果。
+type DeviceHeartbeatPopupAnalysisResult struct {
+	Success     bool             `json:"success"`
+	Message     string           `json:"message"`
+	Serial      string           `json:"serial"`
+	PackageName string           `json:"packageName"`
+	Pid         string           `json:"pid"`
+	UsedPid     bool             `json:"usedPid"`
+	Command     string           `json:"command"`
+	TotalLines  int              `json:"totalLines"`
+	Heartbeats  []HeartbeatEvent `json:"heartbeats"`
+	Popups      []PopupEvent     `json:"popups"`
+	NextCheckAt string           `json:"nextCheckAt"`
+}
+
+// HeartbeatEvent 心跳日志事件。
+type HeartbeatEvent struct {
+	Time       string `json:"time"`
+	Direction  string `json:"direction"`
+	ResultType string `json:"resultType"`
+	TaskID     string `json:"taskId"`
+	DevID      string `json:"devId"`
+	URL        string `json:"url"`
+	Raw        string `json:"raw"`
+}
+
+// PopupEvent 弹窗日志事件。
+type PopupEvent struct {
+	FocusTime   string `json:"focusTime"`
+	PrepareTime string `json:"prepareTime"`
+	CreateTime  string `json:"createTime"`
+	TriggerTime string `json:"triggerTime"`
+	ScheduledAt string `json:"scheduledAt"`
+	Title       string `json:"title"`
+	PlanID      string `json:"planId"`
+	Content     string `json:"content"`
+	Raw         string `json:"raw"`
+}
+
 // ManualRecordingResult 手动录屏操作结果
 type ManualRecordingResult struct {
 	Success    bool   `json:"success"`
@@ -1230,6 +1290,126 @@ func (a *App) GetLogcatOutputDir() string {
 	return filepath.Join(a.resolvedOutputDir(), "logcat")
 }
 
+// AnalyzeHeartbeatPopupLogs 分析 com.zjdx.neuralnexus 的心跳和悬浮弹窗日志。
+func (a *App) AnalyzeHeartbeatPopupLogs(serial string, opts HeartbeatPopupAnalysisOptions) HeartbeatPopupAnalysisResult {
+	opts.PackageName = strings.TrimSpace(opts.PackageName)
+	if opts.PackageName == "" {
+		opts.PackageName = "com.zjdx.neuralnexus"
+	}
+	opts.Lines = normalizeAnalysisLogcatLines(opts.Lines)
+	opts.Buffers = normalizeLogcatBuffers(opts.Buffers)
+
+	devices, err := a.resolveAnalysisDevices(serial)
+	if err != nil {
+		return HeartbeatPopupAnalysisResult{Success: false, Message: err.Error(), PackageName: opts.PackageName}
+	}
+
+	result := HeartbeatPopupAnalysisResult{
+		Success:     true,
+		PackageName: opts.PackageName,
+	}
+
+	for _, device := range devices {
+		deviceResult := a.analyzeHeartbeatPopupForDevice(device, opts)
+		result.Devices = append(result.Devices, deviceResult)
+		result.TotalHeartbeats += len(deviceResult.Heartbeats)
+		result.TotalPopups += len(deviceResult.Popups)
+		if !deviceResult.Success {
+			result.Success = false
+		}
+	}
+
+	result.Message = fmt.Sprintf("分析完成：%d 台设备，心跳 %d 条，弹窗 %d 次", len(result.Devices), result.TotalHeartbeats, result.TotalPopups)
+	if !result.Success {
+		result.Message = "部分设备分析失败，" + result.Message
+	}
+
+	if opts.SaveToFile {
+		filePath, dir, err := a.saveHeartbeatPopupAnalysis(result)
+		if err != nil {
+			result.Success = false
+			result.Message += fmt.Sprintf("；保存失败: %v", err)
+			return result
+		}
+		result.FilePath = filePath
+		result.Dir = dir
+		result.Message += "，已保存到文件"
+	}
+
+	return result
+}
+
+func (a *App) resolveAnalysisDevices(serial string) ([]string, error) {
+	serial = strings.TrimSpace(serial)
+	if serial == "__all__" {
+		devices, err := a.GetConnectedDevices()
+		if err != nil {
+			return nil, err
+		}
+		if len(devices) == 0 {
+			return nil, fmt.Errorf("未检测到可用设备")
+		}
+		return devices, nil
+	}
+
+	resolved, err := a.resolveAdbDevice(serial)
+	if err != nil {
+		return nil, err
+	}
+	return []string{resolved}, nil
+}
+
+func (a *App) analyzeHeartbeatPopupForDevice(serial string, opts HeartbeatPopupAnalysisOptions) DeviceHeartbeatPopupAnalysisResult {
+	logOpts := LogcatQueryOptions{
+		PackageName: opts.PackageName,
+		Lines:       opts.Lines,
+		Buffers:     opts.Buffers,
+		UsePid:      opts.UsePid,
+	}
+
+	pid := ""
+	if opts.UsePid && opts.PackageName != "" {
+		pid = a.findPackagePid(serial, opts.PackageName)
+	}
+
+	raw, displayCmd, usedPid, err := a.runLogcatDump(serial, logOpts, pid)
+	if err != nil && pid != "" {
+		raw, displayCmd, usedPid, err = a.runLogcatDump(serial, logOpts, "")
+	}
+	if err != nil {
+		return DeviceHeartbeatPopupAnalysisResult{
+			Success:     false,
+			Message:     err.Error(),
+			Serial:      serial,
+			PackageName: opts.PackageName,
+			Pid:         pid,
+			Command:     displayCmd,
+		}
+	}
+
+	heartbeats, popups, nextCheckAt := parseHeartbeatPopupLog(raw)
+	message := fmt.Sprintf("心跳 %d 条，弹窗 %d 次", len(heartbeats), len(popups))
+	if usedPid && pid != "" {
+		message += fmt.Sprintf("，按 PID %s 查询", pid)
+	} else {
+		message += "，按包名/关键词日志分析"
+	}
+
+	return DeviceHeartbeatPopupAnalysisResult{
+		Success:     true,
+		Message:     message,
+		Serial:      serial,
+		PackageName: opts.PackageName,
+		Pid:         pid,
+		UsedPid:     usedPid,
+		Command:     displayCmd,
+		TotalLines:  countNonEmptyLines(raw),
+		Heartbeats:  heartbeats,
+		Popups:      popups,
+		NextCheckAt: nextCheckAt,
+	}
+}
+
 func (a *App) runLogcatDump(serial string, opts LogcatQueryOptions, pid string) (string, string, bool, error) {
 	args := []string{"-s", serial, "logcat", "-d", "-v", "time"}
 	for _, buffer := range opts.Buffers {
@@ -1245,7 +1425,14 @@ func (a *App) runLogcatDump(serial string, opts LogcatQueryOptions, pid string) 
 	}
 	displayCmd := "adb " + strings.Join(args, " ")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	timeout := 15 * time.Second
+	if opts.Lines > 5000 {
+		timeout = 30 * time.Second
+	}
+	if opts.Lines > 50000 {
+		timeout = 45 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := adb.CommandContext(ctx, args...)
 	hideConsoleWindow(cmd)
@@ -1314,6 +1501,285 @@ func (a *App) saveLogcatQueryResult(result LogcatQueryResult) (string, string, e
 		return "", logDir, err
 	}
 	return filePath, logDir, nil
+}
+
+func (a *App) saveHeartbeatPopupAnalysis(result HeartbeatPopupAnalysisResult) (string, string, error) {
+	logDir := a.GetLogcatOutputDir()
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return "", logDir, err
+	}
+
+	filePath := filepath.Join(logDir, "heartbeat-popup-"+time.Now().Format("20060102-150405")+".txt")
+	var content strings.Builder
+	fmt.Fprintf(&content, "package: %s\n", result.PackageName)
+	fmt.Fprintf(&content, "devices: %d\n", len(result.Devices))
+	fmt.Fprintf(&content, "heartbeats: %d\n", result.TotalHeartbeats)
+	fmt.Fprintf(&content, "popups: %d\n\n", result.TotalPopups)
+
+	for _, device := range result.Devices {
+		fmt.Fprintf(&content, "===== %s =====\n", device.Serial)
+		fmt.Fprintf(&content, "status: %s\n", boolStatus(device.Success))
+		fmt.Fprintf(&content, "message: %s\n", device.Message)
+		if device.Command != "" {
+			fmt.Fprintf(&content, "command: %s\n", device.Command)
+		}
+		if device.Pid != "" {
+			fmt.Fprintf(&content, "pid: %s\n", device.Pid)
+		}
+		if device.NextCheckAt != "" {
+			fmt.Fprintf(&content, "next_popup_check: %s\n", device.NextCheckAt)
+		}
+
+		content.WriteString("\nheartbeats:\n")
+		if len(device.Heartbeats) == 0 {
+			content.WriteString("  (none)\n")
+		}
+		for _, hb := range device.Heartbeats {
+			fmt.Fprintf(&content, "  %s\t%s\t%s\ttaskId=%s\tdevId=%s\turl=%s\n", hb.Time, hb.Direction, emptyAsDash(hb.ResultType), emptyAsDash(hb.TaskID), emptyAsDash(hb.DevID), emptyAsDash(hb.URL))
+		}
+
+		content.WriteString("\npopups:\n")
+		if len(device.Popups) == 0 {
+			content.WriteString("  (none)\n")
+		}
+		for _, popup := range device.Popups {
+			fmt.Fprintf(&content, "  focus=%s\tcreate=%s\tprepare=%s\ttrigger=%s\tplanId=%s\ttitle=%s\n", popup.FocusTime, emptyAsDash(popup.CreateTime), emptyAsDash(popup.PrepareTime), emptyAsDash(popup.TriggerTime), emptyAsDash(popup.PlanID), emptyAsDash(popup.Title))
+		}
+		content.WriteString("\n")
+	}
+
+	if err := os.WriteFile(filePath, []byte(content.String()), 0644); err != nil {
+		return "", logDir, err
+	}
+	return filePath, logDir, nil
+}
+
+func parseHeartbeatPopupLog(output string) ([]HeartbeatEvent, []PopupEvent, string) {
+	var heartbeats []HeartbeatEvent
+	var popups []PopupEvent
+
+	var lastHeartbeatURL string
+	var lastPrepare PopupEvent
+	var lastCreateTime string
+	var lastTriggerTime string
+	var lastTriggerTitle string
+	var lastScheduledAt string
+	var nextCheckAt string
+
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		ts := logcatLineTime(line)
+		if ts == "" {
+			continue
+		}
+
+		if strings.Contains(line, "device/heartbeat") && strings.Contains(line, "Request URL:") {
+			lastHeartbeatURL = strings.TrimSpace(line[strings.LastIndex(line, "Request URL:")+len("Request URL:"):])
+			continue
+		}
+
+		if idx := strings.Index(line, "heartbeat json:"); idx >= 0 {
+			raw := strings.TrimSpace(line[idx+len("heartbeat json:"):])
+			heartbeats = append(heartbeats, HeartbeatEvent{
+				Time:      ts,
+				Direction: "request",
+				DevID:     jsonStringValue(raw, "devId"),
+				URL:       lastHeartbeatURL,
+				Raw:       raw,
+			})
+			continue
+		}
+
+		if idx := strings.Index(line, "newHeartBeat return data"); idx >= 0 {
+			raw := strings.TrimSpace(line[idx:])
+			if colon := strings.Index(raw, ":"); colon >= 0 {
+				raw = strings.TrimSpace(raw[colon+1:])
+			}
+			heartbeats = append(heartbeats, HeartbeatEvent{
+				Time:       ts,
+				Direction:  "response",
+				ResultType: heartbeatResultType(raw),
+				TaskID:     heartbeatTaskID(raw),
+				URL:        lastHeartbeatURL,
+				Raw:        raw,
+			})
+			continue
+		}
+
+		if idx := strings.Index(line, "已安排下次弹窗检查:"); idx >= 0 {
+			nextCheckAt = strings.TrimSpace(line[idx+len("已安排下次弹窗检查:"):])
+			continue
+		}
+
+		if idx := strings.Index(line, "已触发弹窗:"); idx >= 0 {
+			lastTriggerTime = ts
+			lastTriggerTitle = strings.TrimSpace(line[idx+len("已触发弹窗:"):])
+			continue
+		}
+
+		if idx := strings.Index(line, "触发定时弹窗:"); idx >= 0 {
+			lastTriggerTime = ts
+			triggerText := strings.TrimSpace(line[idx+len("触发定时弹窗:"):])
+			if atIdx := strings.Index(triggerText, " at "); atIdx >= 0 {
+				lastTriggerTitle = strings.TrimSpace(triggerText[:atIdx])
+				lastScheduledAt = strings.TrimSpace(triggerText[atIdx+len(" at "):])
+			} else {
+				lastTriggerTitle = triggerText
+			}
+			continue
+		}
+
+		if strings.Contains(line, "准备弹窗") {
+			rawJSON := extractJSONObject(line)
+			if rawJSON != "" {
+				lastPrepare = PopupEvent{
+					PrepareTime: ts,
+					TriggerTime: lastTriggerTime,
+					ScheduledAt: lastScheduledAt,
+					Title:       jsonStringValue(rawJSON, "title"),
+					PlanID:      jsonNumberOrStringValue(rawJSON, "planId"),
+					Content:     jsonStringValue(rawJSON, "content"),
+					Raw:         rawJSON,
+				}
+				if lastPrepare.Title == "" {
+					lastPrepare.Title = lastTriggerTitle
+				}
+			}
+			continue
+		}
+
+		if strings.Contains(line, "创建悬浮弹窗") {
+			lastCreateTime = ts
+			continue
+		}
+
+		if strings.Contains(line, "悬浮弹窗已获取焦点") {
+			popup := lastPrepare
+			popup.FocusTime = ts
+			popup.CreateTime = lastCreateTime
+			if popup.TriggerTime == "" {
+				popup.TriggerTime = lastTriggerTime
+			}
+			if popup.ScheduledAt == "" {
+				popup.ScheduledAt = lastScheduledAt
+			}
+			if popup.Title == "" {
+				popup.Title = lastTriggerTitle
+			}
+			popups = append(popups, popup)
+			lastPrepare = PopupEvent{}
+			lastCreateTime = ""
+			continue
+		}
+	}
+
+	return heartbeats, popups, nextCheckAt
+}
+
+func logcatLineTime(line string) string {
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return ""
+	}
+	if len(fields[0]) != 5 || fields[0][2] != '-' || !strings.Contains(fields[1], ":") {
+		return ""
+	}
+	return fields[0] + " " + fields[1]
+}
+
+func extractJSONObject(line string) string {
+	start := strings.Index(line, "{")
+	end := strings.LastIndex(line, "}")
+	if start < 0 || end <= start {
+		return ""
+	}
+	return line[start : end+1]
+}
+
+func jsonStringValue(raw, key string) string {
+	value, ok := jsonMapValue(raw, key)
+	if !ok || value == nil {
+		return ""
+	}
+	switch v := value.(type) {
+	case string:
+		return v
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func jsonNumberOrStringValue(raw, key string) string {
+	value, ok := jsonMapValue(raw, key)
+	if !ok || value == nil {
+		return ""
+	}
+	switch v := value.(type) {
+	case string:
+		return v
+	case float64:
+		return strconv.FormatInt(int64(v), 10)
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func jsonMapValue(raw, key string) (any, bool) {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return nil, false
+	}
+	value, ok := data[key]
+	return value, ok
+}
+
+func heartbeatResultType(raw string) string {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return ""
+	}
+	payload, _ := data["data"].(map[string]any)
+	if payload == nil {
+		return ""
+	}
+	if value, ok := payload["type"].(string); ok {
+		return value
+	}
+	return ""
+}
+
+func heartbeatTaskID(raw string) string {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return ""
+	}
+	payload, _ := data["data"].(map[string]any)
+	if payload == nil {
+		return ""
+	}
+	if value, ok := payload["taskId"].(string); ok {
+		return value
+	}
+	return ""
+}
+
+func normalizeAnalysisLogcatLines(lines int) int {
+	if lines <= 0 {
+		return 10000
+	}
+	if lines > 100000 {
+		return 100000
+	}
+	return lines
+}
+
+func boolStatus(ok bool) string {
+	if ok {
+		return "success"
+	}
+	return "failed"
 }
 
 func normalizeLogcatLines(lines int) int {
