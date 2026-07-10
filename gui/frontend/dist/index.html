@@ -14,9 +14,9 @@
         :root {
             --accent: #16326b;
             --accent-soft: #2d4f95;
-            --page-bg: #ffffff;
+            --page-bg: #f2f5f9;
             --surface-muted: #f5f7fb;
-            --border: #d9e0ec;
+            --border: #d5dce8;
             --text-main: #1d2a44;
             --text-muted: #64748b;
         }
@@ -25,24 +25,29 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
             background: var(--page-bg);
             min-height: 100vh;
-            padding: 20px;
+            padding: 14px 18px 24px;
             color: var(--text-main);
         }
 
         .container {
-            max-width: 900px;
+            width: 100%;
+            max-width: 1680px;
             margin: 0 auto;
         }
 
         .header {
-            text-align: center;
+            display: flex;
+            align-items: center;
+            text-align: left;
             color: var(--text-main);
-            margin-bottom: 20px;
+            min-height: 48px;
+            margin-bottom: 10px;
+            padding: 0 2px;
         }
 
         .header h1 {
-            font-size: 28px;
-            font-weight: 600;
+            font-size: 24px;
+            font-weight: 700;
             text-shadow: none;
         }
 
@@ -57,8 +62,8 @@
             border: 1px solid var(--accent);
             background: #ffffff;
             color: var(--accent);
-            border-radius: 999px;
-            padding: 4px 10px;
+            border-radius: 6px;
+            padding: 4px 8px;
             font-size: 12px;
             font-weight: 700;
             cursor: pointer;
@@ -69,50 +74,101 @@
         }
 
         .card {
-            background: white;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
-            overflow: hidden;
-            margin-bottom: 20px;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            overflow: visible;
+            margin-bottom: 0;
         }
 
         .tabs {
             display: flex;
-            background: var(--surface-muted);
-            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            box-shadow: 0 3px 12px rgba(15, 23, 42, 0.07);
+            overflow-x: auto;
         }
 
         .tab {
             flex: 1;
-            padding: 15px 20px;
+            min-width: 130px;
+            padding: 13px 18px;
             text-align: center;
             cursor: pointer;
-            font-weight: 500;
-            color: #666;
-            transition: all 0.3s;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: background-color 0.2s, color 0.2s;
             border: none;
+            border-right: 1px solid #e9edf4;
             background: none;
             font-size: 14px;
         }
 
+        .tab:last-child {
+            border-right: none;
+        }
+
         .tab:hover {
-            background: #eee;
+            background: var(--surface-muted);
+            color: var(--text-main);
         }
 
         .tab.active {
-            background: white;
+            background: #eef3fb;
             color: var(--accent);
-            border-bottom: 2px solid var(--accent);
+            box-shadow: inset 0 -3px 0 var(--accent);
         }
 
         .tab-content {
             display: none;
-            padding: 25px;
+            padding: 16px 0 24px;
         }
 
         .tab-content.active {
-            display: block;
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 16px;
+            align-items: start;
+        }
+
+        .feature-section {
+            --section-accent: #3b6fb6;
+            grid-column: 1 / -1;
+            min-width: 0;
+            padding: 16px 18px 18px;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-top: 3px solid var(--section-accent);
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.045);
+        }
+
+        .feature-section.half {
+            grid-column: span 6;
+        }
+
+        .feature-section.two-thirds {
+            grid-column: span 8;
+        }
+
+        .feature-section.one-third {
+            grid-column: span 4;
+        }
+
+        .tone-blue { --section-accent: #2563a9; }
+        .tone-cyan { --section-accent: #0e7490; }
+        .tone-green { --section-accent: #27815a; }
+        .tone-amber { --section-accent: #b7791f; }
+        .tone-red { --section-accent: #b94a48; }
+        .tone-violet { --section-accent: #6d5ba7; }
+        .tone-slate { --section-accent: #526276; }
+
+        .feature-section > .section-header:first-child {
+            margin-top: 0 !important;
         }
 
         .form-group {
@@ -204,19 +260,24 @@
         }
 
         .form-group input,
-        .form-group textarea {
+        .form-group textarea,
+        .form-group select {
             width: 100%;
             padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
             font-size: 14px;
             transition: border-color 0.3s;
+            background: #ffffff;
+            color: var(--text-main);
         }
 
         .form-group input:focus,
-        .form-group textarea:focus {
+        .form-group textarea:focus,
+        .form-group select:focus {
             outline: none;
             border-color: var(--accent-soft);
+            box-shadow: 0 0 0 3px rgba(45, 79, 149, 0.1);
         }
 
         .form-row {
@@ -234,7 +295,7 @@
         .btn {
             padding: 12px 24px;
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             font-size: 14px;
             font-weight: 500;
             cursor: pointer;
@@ -304,15 +365,26 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            gap: 12px;
+            margin-bottom: 14px;
             padding-bottom: 10px;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid #e9edf4;
+        }
+
+        .section-header::before {
+            content: "";
+            width: 4px;
+            height: 18px;
+            flex: 0 0 4px;
+            border-radius: 2px;
+            background: var(--section-accent, var(--accent));
         }
 
         .section-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
+            flex: 1;
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text-main);
         }
 
         .text-list {
@@ -425,9 +497,10 @@
 
         .alert {
             padding: 12px 15px;
-            border-radius: 8px;
+            border-radius: 6px;
             margin-bottom: 15px;
             font-size: 14px;
+            line-height: 1.55;
         }
 
         .alert-success {
@@ -441,8 +514,9 @@
         }
 
         .alert-info {
-            background: #cce5ff;
-            color: #004085;
+            background: #edf5ff;
+            color: #234d75;
+            border-left: 3px solid #6fa5d8;
         }
 
         .perf-capability-panel {
@@ -601,11 +675,10 @@
         }
 
         .analysis-panel {
-            margin-top: 18px;
-            padding: 14px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            background: #fff;
+            margin-top: 20px;
+            padding-top: 18px;
+            border-top: 1px dashed #b9c4d3;
+            background: transparent;
         }
 
         .analysis-grid {
@@ -673,7 +746,65 @@
             font-size: 13px;
         }
 
+        .table-shell {
+            width: 100%;
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #ffffff;
+        }
+
+        @media (max-width: 1080px) {
+            .feature-section.half,
+            .feature-section.two-thirds,
+            .feature-section.one-third {
+                grid-column: 1 / -1;
+            }
+        }
+
         @media (max-width: 760px) {
+            body {
+                padding: 10px;
+            }
+
+            .header {
+                min-height: 42px;
+                margin-bottom: 8px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .tabs {
+                position: static;
+            }
+
+            .tab {
+                flex: 0 0 auto;
+                min-width: 116px;
+                padding: 12px 14px;
+            }
+
+            .tab-content.active {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+
+            .feature-section,
+            .feature-section.half,
+            .feature-section.two-thirds,
+            .feature-section.one-third {
+                grid-column: 1;
+                padding: 14px;
+            }
+
+            .form-row,
+            .form-row-2 {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+
             .perf-capability-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
@@ -697,6 +828,16 @@
 
             .analysis-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .adb-connect-area,
+            .play-dir-area {
+                align-items: stretch !important;
+                flex-direction: column;
+            }
+
+            .btn-group .btn {
+                flex: 1 1 150px;
             }
         }
 
@@ -783,9 +924,12 @@
         }
 
         .footer {
-            position: fixed;
-            bottom: 10px;
-            right: 20px;
+            position: static;
+            width: 100%;
+            max-width: 1680px;
+            margin: 0 auto;
+            padding: 0 4px;
+            text-align: right;
             font-size: 12px;
             color: rgba(29, 42, 68, 0.45);
         }
@@ -844,7 +988,7 @@
             width: min(520px, 100%);
             background: #ffffff;
             border: 1px solid rgba(22, 50, 107, 0.12);
-            border-radius: 16px;
+            border-radius: 8px;
             box-shadow: 0 28px 60px rgba(15, 23, 42, 0.18);
             overflow: hidden;
         }
@@ -893,6 +1037,7 @@
 
             <!-- 设备管理 -->
             <div id="devmgr" class="tab-content active">
+                <section class="feature-section one-third tone-blue">
                 <div class="section-header">
                     <span class="section-title">连接设备</span>
                 </div>
@@ -902,13 +1047,15 @@
                     <button class="btn btn-warning" onclick="devConnect()">连接</button>
                 </div>
                 <div id="devStatus" class="alert alert-info">请连接设备或刷新列表</div>
+                </section>
 
+                <section class="feature-section two-thirds tone-slate">
                 <div class="section-header" style="margin-top:20px;">
                     <span class="section-title">已连接设备</span>
                     <button class="btn btn-secondary" onclick="devRefresh()" style="padding:6px 14px;font-size:13px;">刷新列表</button>
                 </div>
 
-                <div style="border:1px solid #ddd;border-radius:8px;overflow:hidden;">
+                <div class="table-shell">
                     <table style="width:100%;border-collapse:collapse;font-size:13px;">
                         <thead>
                             <tr style="background:#f5f5f5;">
@@ -929,7 +1076,9 @@
                     <button class="btn btn-danger" onclick="devDisconnectSelected()">断开选中设备</button>
                     <button class="btn btn-secondary" onclick="devDisconnectAll()">断开所有设备</button>
                 </div>
+                </section>
 
+                <section class="feature-section half tone-cyan">
                 <div class="section-header" style="margin-top:25px;">
                     <span class="section-title">手动录屏</span>
                 </div>
@@ -949,7 +1098,9 @@
                 </div>
 
                 <div class="status-text" id="devRecordStatus"></div>
+                </section>
 
+                <section class="feature-section half tone-green">
                 <div class="section-header" style="margin-top:25px;">
                     <span class="section-title">安装 APK</span>
                 </div>
@@ -965,7 +1116,9 @@
 
                 <div class="status-text" id="devInstallStatus"></div>
                 <div class="output-console" id="devOutput"></div>
+                </section>
 
+                <section class="feature-section tone-slate">
                 <div class="section-header" style="margin-top:25px;">
                     <span class="section-title">命令执行</span>
                 </div>
@@ -996,7 +1149,9 @@
 
                 <div class="status-text" id="devCommandStatus"></div>
                 <div class="output-console" id="devCommandOutput"></div>
+                </section>
 
+                <section class="feature-section tone-amber">
                 <div class="section-header" style="margin-top:25px;">
                     <span class="section-title">日志查看</span>
                 </div>
@@ -1129,12 +1284,14 @@
                     <div class="status-text" id="devAnalysisStatus"></div>
                     <div id="devAnalysisResult"></div>
                 </div>
+                </section>
             </div>
 
             <!-- 启动时间测试 -->
             <div id="perf" class="tab-content">
+                <section class="feature-section tone-blue">
                 <div class="section-header">
-                    <span class="section-title">目标设备</span>
+                    <span class="section-title">测试目标</span>
                 </div>
 
                 <div style="display:flex;gap:10px;align-items:center;">
@@ -1173,7 +1330,9 @@
                     </div>
                     <input type="text" id="perfComponent" placeholder="或手动输入 Component 名称" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;margin-top:8px;">
                 </div>
+                </section>
 
+                <section class="feature-section tone-red">
                 <div class="section-header" style="margin-top:20px;">
                     <span class="section-title">应用控制</span>
                 </div>
@@ -1208,7 +1367,9 @@
                 <div class="btn-group" style="margin-top:10px;">
                     <button class="btn btn-secondary" id="perfKillAllBtn" onclick="perfKillAllApps()">停止所有第三方应用</button>
                 </div>
+                </section>
 
+                <section class="feature-section tone-green">
                 <div class="section-header" style="margin-top:20px;">
                     <span class="section-title">启动计时</span>
                 </div>
@@ -1317,12 +1478,14 @@
                         </div>
                     </div>
                 </div>
+                </section>
 
+                <section class="feature-section tone-slate">
                 <div class="section-header" style="margin-top:20px;">
                     <span class="section-title">测试记录</span>
                 </div>
 
-                <div style="border:1px solid #ddd;border-radius:8px;overflow:hidden;">
+                <div class="table-shell">
                     <table style="width:100%;border-collapse:collapse;font-size:13px;" id="perfRecordsTable">
                         <thead>
                             <tr style="background:#f5f5f5;">
@@ -1353,10 +1516,12 @@
                 </div>
 
                 <div class="output-console" id="perfOutput"></div>
+                </section>
             </div>
 
             <!-- 生成语音 -->
             <div id="generate" class="tab-content">
+                <section class="feature-section one-third tone-blue">
                 <div class="section-header">
                     <span class="section-title">文本列表</span>
                     <button class="btn btn-secondary" onclick="openTextFile()" style="padding: 8px 16px; font-size: 13px;">打开文件编辑</button>
@@ -1371,7 +1536,12 @@
                 <div class="btn-group" style="margin-top: 15px;">
                     <button class="btn btn-secondary" onclick="loadTextList()">刷新列表</button>
                 </div>
+                </section>
 
+                <section class="feature-section two-thirds tone-green">
+                <div class="section-header">
+                    <span class="section-title">生成任务</span>
+                </div>
                 <div class="audio-structure">
                     <span class="silence" id="silenceStart">静音1秒</span>
                     <span class="arrow">→</span>
@@ -1401,10 +1571,12 @@
                 <div class="status-text" id="statusText"></div>
 
                 <div class="output-console" id="generateOutput"></div>
+                </section>
             </div>
 
             <!-- 播放模式 -->
             <div id="play" class="tab-content">
+                <section class="feature-section tone-green">
                 <div class="section-header">
                     <span class="section-title">播放模式</span>
                 </div>
@@ -1450,10 +1622,12 @@
                 <div class="status-text" id="playStatusText"></div>
 
                 <div class="output-console" id="playOutput"></div>
+                </section>
             </div>
 
             <!-- 配置设置 -->
             <div id="config" class="tab-content">
+                <section class="feature-section one-third tone-blue">
                 <div class="section-header">
                     <span class="section-title">语音引擎配置</span>
                 </div>
@@ -1466,8 +1640,11 @@
                     <div style="margin-top: 8px; font-size: 12px; color: #666;">
                         提示：Edge 语音需要联网，Piper 语音离线可用
                     </div>
+                    <div class="status-text" id="voiceStatus">正在加载语音列表...</div>
                 </div>
+                </section>
 
+                <section class="feature-section two-thirds tone-violet">
                 <div class="section-header" style="margin-top: 20px;">
                     <span class="section-title">语音模板配置</span>
                     <div style="font-size: 12px; color: #666; margin-top: 5px;">
@@ -1483,7 +1660,9 @@
                     <button class="btn btn-secondary" onclick="addTemplateSegment('voice')">+ 添加语音</button>
                     <button class="btn btn-secondary" onclick="addTemplateSegment('silence')">+ 添加静音</button>
                 </div>
+                </section>
 
+                <section class="feature-section one-third tone-green">
                 <div class="section-header" style="margin-top: 20px;">
                     <span class="section-title">播放模式配置</span>
                 </div>
@@ -1492,7 +1671,9 @@
                     <label>结束前截图(秒)</label>
                     <input type="number" id="screenshotBeforeEnd" value="12" step="0.5" style="width: 150px;">
                 </div>
+                </section>
 
+                <section class="feature-section two-thirds tone-cyan">
                 <div class="section-header" style="margin-top: 20px;">
                     <span class="section-title">视频录制配置</span>
                 </div>
@@ -1523,7 +1704,9 @@
                         </div>
                     </div>
                 </div>
+                </section>
 
+                <section class="feature-section tone-slate">
                 <div class="section-header" style="margin-top: 20px;">
                     <span class="section-title">文件配置</span>
                 </div>
@@ -1546,12 +1729,14 @@
 
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
-                    <button class="btn btn-secondary" onclick="loadConfig()">重新加载</button>
+                    <button class="btn btn-secondary" onclick="reloadConfigPanel()">重新加载</button>
                 </div>
+                </section>
             </div>
 
             <!-- 软件更新 -->
             <div id="update" class="tab-content">
+                <section class="feature-section tone-blue">
                 <div class="section-header">
                     <span class="section-title">软件更新</span>
                 </div>
@@ -1576,6 +1761,7 @@
                     <button class="btn btn-success" id="downloadUpdateBtn" onclick="downloadUpdate()" disabled>下载更新包</button>
                     <button class="btn btn-secondary" id="openUpdateDirBtn" onclick="openUpdateDir()" disabled>打开更新目录</button>
                 </div>
+                </section>
             </div>
         </div>
     </div>
@@ -1637,9 +1823,10 @@
                 div.className = `template-segment ${segment.type}${isMain ? ' main' : ''}`;
 
                 if (segment.type === 'voice') {
+                    const segmentText = devEscapeHtml(segment.text);
                     div.innerHTML = `
                         <span class="segment-type">语音</span>
-                        <input type="text" value="${segment.text}"
+                        <input type="text" value="${segmentText}"
                                onchange="updateTemplateSegment(${index}, 'text', this.value)"
                                ${isMain ? 'readonly style="background: #fff3e0; font-weight: bold;"' : ''}>
                         <div class="segment-actions">
@@ -1649,9 +1836,10 @@
                         </div>
                     `;
                 } else {
+                    const seconds = Number.isFinite(Number(segment.seconds)) ? Number(segment.seconds) : 0;
                     div.innerHTML = `
                         <span class="segment-type">静音</span>
-                        <input type="number" value="${segment.seconds}" step="0.5" min="0"
+                        <input type="number" value="${seconds}" step="0.5" min="0"
                                onchange="updateTemplateSegment(${index}, 'seconds', parseFloat(this.value))">
                         <span style="color: #666;">秒</span>
                         <div class="segment-actions">
@@ -3205,7 +3393,7 @@
             list.innerHTML = texts.map((text, i) => `
                 <div class="text-item">
                     <span class="text-item-num">${String(i + 1).padStart(4, '0')}</span>
-                    <span class="text-item-content">${text}</span>
+                    <span class="text-item-content">${devEscapeHtml(text)}</span>
                 </div>
             `).join('');
         }
@@ -3562,51 +3750,76 @@
 
         // 加载声音列表
         async function loadVoices() {
+            const select = document.getElementById('voiceSelect');
+            const status = document.getElementById('voiceStatus');
+            select.disabled = true;
+            status.textContent = '正在加载语音列表...';
             try {
-                const voices = await window.go.main.App.GetVoices();
-                const cfg = await window.go.main.App.GetConfig();
-                const select = document.getElementById('voiceSelect');
+                const [voiceResult, cfg] = await Promise.all([
+                    window.go.main.App.GetVoices(),
+                    window.go.main.App.GetConfig()
+                ]);
+                const voices = Array.isArray(voiceResult) ? voiceResult : [];
+                const voiceField = (voice, lower, upper) => String(voice?.[lower] ?? voice?.[upper] ?? '').trim();
+                const voiceEngine = (voice) => {
+                    const engine = voiceField(voice, 'engine', 'Engine').toLowerCase();
+                    const id = voiceField(voice, 'id', 'ID').toLowerCase();
+                    if (engine.startsWith('piper') || id.startsWith('piper:')) return 'piper';
+                    if (engine.startsWith('edge') || id.startsWith('edge:')) return 'edge';
+                    return 'other';
+                };
 
                 select.innerHTML = '';
 
                 // 按引擎分组
-                const piperVoices = voices.filter(v => v.engine === 'piper');
-                const edgeVoices = voices.filter(v => v.engine === 'edge');
-
-                // Piper 组
-                if (piperVoices.length > 0) {
-                    const optgroup1 = document.createElement('optgroup');
-                    optgroup1.label = 'Piper (离线)';
-                    piperVoices.forEach(v => {
+                const piperVoices = voices.filter(v => voiceEngine(v) === 'piper');
+                const edgeVoices = voices.filter(v => voiceEngine(v) === 'edge');
+                const otherVoices = voices.filter(v => voiceEngine(v) === 'other');
+                const appendVoiceGroup = (label, items) => {
+                    if (items.length === 0) return;
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = label;
+                    items.forEach(v => {
                         const option = document.createElement('option');
-                        option.value = v.id;
-                        option.textContent = v.name + ' (' + v.gender + ')';
-                        optgroup1.appendChild(option);
+                        const id = voiceField(v, 'id', 'ID');
+                        const name = voiceField(v, 'name', 'Name') || id;
+                        const gender = voiceField(v, 'gender', 'Gender');
+                        option.value = id;
+                        option.textContent = gender ? `${name} (${gender})` : name;
+                        optgroup.appendChild(option);
                     });
-                    select.appendChild(optgroup1);
-                }
+                    select.appendChild(optgroup);
+                };
 
-                // Edge 组
-                if (edgeVoices.length > 0) {
-                    const optgroup2 = document.createElement('optgroup');
-                    optgroup2.label = 'Edge TTS (联网)';
-                    edgeVoices.forEach(v => {
-                        const option = document.createElement('option');
-                        option.value = v.id;
-                        option.textContent = v.name + ' (' + v.gender + ')';
-                        optgroup2.appendChild(option);
-                    });
-                    select.appendChild(optgroup2);
+                appendVoiceGroup('Piper (离线)', piperVoices);
+                appendVoiceGroup('Edge TTS (联网)', edgeVoices);
+                appendVoiceGroup('其它引擎', otherVoices);
+
+                if (select.options.length === 0) {
+                    const emptyOption = document.createElement('option');
+                    emptyOption.value = '';
+                    emptyOption.textContent = '未加载到可用语音';
+                    select.appendChild(emptyOption);
+                    status.textContent = '后端未返回可用语音，请点击重新加载。';
+                    return;
                 }
 
                 // 设置当前选中的声音
-                if (cfg.voice_id) {
-                    select.value = cfg.voice_id;
-                } else {
-                    select.value = 'edge:zh-CN-YunjianNeural';
+                const currentVoiceID = String(cfg?.voice_id ?? cfg?.VoiceID ?? 'edge:zh-CN-YunjianNeural');
+                if (![...select.options].some(option => option.value === currentVoiceID)) {
+                    const currentOption = document.createElement('option');
+                    currentOption.value = currentVoiceID;
+                    currentOption.textContent = `${currentVoiceID}（当前配置）`;
+                    select.appendChild(currentOption);
                 }
+                select.value = currentVoiceID;
+                select.disabled = false;
+                status.textContent = `已加载 ${voices.length} 个声音：Edge ${edgeVoices.length}，Piper ${piperVoices.length}`;
             } catch (e) {
                 console.error('加载声音列表失败:', e);
+                select.innerHTML = '<option value="">语音列表加载失败</option>';
+                select.disabled = true;
+                status.textContent = '语音列表加载失败，请点击重新加载。';
             }
         }
 
@@ -3660,7 +3873,7 @@
                 }
                 renderTemplateEditor();
 
-                document.getElementById('screenshotBeforeEnd').value = cfg.screenshot_before_end || 12;
+                document.getElementById('screenshotBeforeEnd').value = cfg.screenshot_before_end ?? 12;
                 document.getElementById('textFile').value = cfg.text_file || 'text.txt';
                 document.getElementById('outputDir').value = cfg.output_dir || 'output';
                 document.getElementById('filenameMaxLength').value = cfg.filename_max_length || 30;
@@ -3668,8 +3881,8 @@
                 // 加载视频录制配置
                 const enableVideoRecording = cfg.enable_video_recording === true; // 默认为 false
                 document.getElementById('enableVideoRecording').checked = enableVideoRecording;
-                document.getElementById('recordingStartDelay').value = cfg.recording_start_delay || 5;
-                document.getElementById('recordingEndBeforeEnd').value = cfg.recording_end_before_end || 5;
+                document.getElementById('recordingStartDelay').value = cfg.recording_start_delay ?? 5;
+                document.getElementById('recordingEndBeforeEnd').value = cfg.recording_end_before_end ?? 5;
                 updateVideoRecordingOptions();
 
                 // 更新音频结构显示
@@ -3677,6 +3890,10 @@
             } catch (e) {
                 console.error('加载配置失败:', e);
             }
+        }
+
+        async function reloadConfigPanel() {
+            await Promise.all([loadConfig(), loadVoices()]);
         }
 
         // 更新视频录制选项显示状态
@@ -3704,7 +3921,7 @@
                     if (segment.text === '$MAIN') {
                         parts.push(`<span class="voice">文本内容</span>`);
                     } else {
-                        parts.push(`<span class="voice">${segment.text}</span>`);
+                        parts.push(`<span class="voice">${devEscapeHtml(segment.text)}</span>`);
                     }
                 }
             });
@@ -3832,8 +4049,7 @@
             }
             devRefresh();   // 刷新设备列表
             loadTextList();
-            loadConfig();
-            loadVoices();
+            reloadConfigPanel();
             loadPlayDir();
             initUpdatePanel();
 

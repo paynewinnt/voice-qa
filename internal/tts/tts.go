@@ -42,15 +42,15 @@ type VoiceInfo struct {
 // GetAvailableVoices returns the built-in voice choices.
 func GetAvailableVoices() []VoiceInfo {
 	return []VoiceInfo{
-		{ID: "edge:zh-CN-YunjianNeural", Name: "云健 (播音男声)", Gender: "男", Engine: "Edge TTS"},
-		{ID: "edge:zh-CN-XiaoxiaoNeural", Name: "晓晓 (标准女声)", Gender: "女", Engine: "Edge TTS"},
-		{ID: "edge:zh-CN-XiaoyiNeural", Name: "晓伊 (甜美女声)", Gender: "女", Engine: "Edge TTS"},
-		{ID: "edge:zh-CN-YunxiNeural", Name: "云希 (标准男声)", Gender: "男", Engine: "Edge TTS"},
-		{ID: "edge:zh-CN-YunxiaNeural", Name: "云夏 (少年男声)", Gender: "男", Engine: "Edge TTS"},
-		{ID: "edge:zh-CN-YunyangNeural", Name: "云扬 (新闻男声)", Gender: "男", Engine: "Edge TTS"},
-		{ID: "edge:zh-CN-liaoning-XiaobeiNeural", Name: "晓北 (东北女声)", Gender: "女", Engine: "Edge TTS"},
-		{ID: "edge:zh-CN-shaanxi-XiaoniNeural", Name: "晓妮 (陕西女声)", Gender: "女", Engine: "Edge TTS"},
-		{ID: "piper:zh_CN-huayan-medium", Name: "Piper 中文女声", Gender: "女", Engine: "Piper"},
+		{ID: "edge:zh-CN-YunjianNeural", Name: "云健 (播音男声)", Gender: "男", Engine: "edge"},
+		{ID: "edge:zh-CN-XiaoxiaoNeural", Name: "晓晓 (标准女声)", Gender: "女", Engine: "edge"},
+		{ID: "edge:zh-CN-XiaoyiNeural", Name: "晓伊 (甜美女声)", Gender: "女", Engine: "edge"},
+		{ID: "edge:zh-CN-YunxiNeural", Name: "云希 (标准男声)", Gender: "男", Engine: "edge"},
+		{ID: "edge:zh-CN-YunxiaNeural", Name: "云夏 (少年男声)", Gender: "男", Engine: "edge"},
+		{ID: "edge:zh-CN-YunyangNeural", Name: "云扬 (新闻男声)", Gender: "男", Engine: "edge"},
+		{ID: "edge:zh-CN-liaoning-XiaobeiNeural", Name: "晓北 (东北女声)", Gender: "女", Engine: "edge"},
+		{ID: "edge:zh-CN-shaanxi-XiaoniNeural", Name: "晓妮 (陕西女声)", Gender: "女", Engine: "edge"},
+		{ID: "piper:zh_CN-huayan-medium", Name: "Piper 中文女声", Gender: "女", Engine: "piper"},
 	}
 }
 

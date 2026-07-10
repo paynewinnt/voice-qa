@@ -490,7 +490,8 @@ EOF
 # 构建 Windows GUI 版本
 build_windows_gui() {
     echo "构建 Windows GUI 版本..."
-    local OUTPUT_DIR="$DIST_DIR/${APP_NAME}-gui-windows-amd64"
+    local PACKAGE_NAME="${APP_NAME}-gui-windows-amd64-v${VERSION}"
+    local OUTPUT_DIR="$DIST_DIR/$PACKAGE_NAME"
     mkdir -p "$OUTPUT_DIR"/{models,output,adb,ffmpeg}
 
     # 检查 wails 是否安装
@@ -579,8 +580,8 @@ EOF
     fi
 
     # 打包
-    (cd "$DIST_DIR" && zip -rq "${APP_NAME}-gui-windows-amd64-v${VERSION}.zip" "${APP_NAME}-gui-windows-amd64")
-    echo "  -> $DIST_DIR/${APP_NAME}-gui-windows-amd64-v${VERSION}.zip"
+    (cd "$DIST_DIR" && zip -rq "${PACKAGE_NAME}.zip" "$PACKAGE_NAME")
+    echo "  -> $DIST_DIR/${PACKAGE_NAME}.zip"
 }
 
 # 执行构建
