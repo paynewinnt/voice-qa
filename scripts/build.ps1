@@ -294,6 +294,20 @@ function Compress-Release([string]$FolderPath, [string]$ArchivePath) {
     Compress-Archive -LiteralPath $FolderPath -DestinationPath $ArchivePath -CompressionLevel Optimal
 }
 
+function New-UpdateManifest([string]$ArchivePath) {
+    $archive = Get-Item -LiteralPath $ArchivePath
+    $manifest = [ordered]@{
+        version = $Version
+        notes = "Windows GUI v$Version"
+        url = $archive.Name
+        sha256 = (Get-FileHash -LiteralPath $archive.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    $manifestPath = Join-Path $DistDir "latest.json"
+    $manifestJson = $manifest | ConvertTo-Json
+    Write-Utf8File $manifestPath ($manifestJson + [Environment]::NewLine) $false
+    Write-Host "  -> $manifestPath"
+}
+
 function New-StagingOutputDir([string]$BaseName) {
     $stagingRoot = Join-Path $ToolRoot ("staging\" + $Version)
     $outputDir = Join-Path $stagingRoot $BaseName
@@ -438,6 +452,7 @@ function Build-WindowsGui {
         throw "Archive already exists: $archivePath. Use a new -Version value."
     }
     Compress-Release $outputDir $archivePath
+    New-UpdateManifest $archivePath
     Try-SyncToDist $outputDir (Join-Path $DistDir $folderName)
     Write-Host "  -> $archivePath"
 }

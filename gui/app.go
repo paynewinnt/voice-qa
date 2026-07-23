@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -31,11 +32,17 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const defaultModel = "zh_CN-huayan-medium.onnx"
+const (
+	defaultModel             = "zh_CN-huayan-medium.onnx"
+	defaultFileNameMaxLength = 30
+	publicUpdateURL          = "https://github.com/paynewinnt/voice-qa/releases/latest/download/latest.json"
+	lanUpdateURL             = "http://172.16.15.15/latest.json"
+	maxUpdateManifestBytes   = 1 << 20
+)
 
 var (
 	appVersion       = "dev"
-	defaultUpdateURL = "http://172.16.15.15/latest.json"
+	defaultUpdateURL = publicUpdateURL
 )
 
 // App struct
@@ -152,21 +159,10 @@ func (a *App) SetVoice(voiceID string) {
 
 // SaveConfig 保存配置
 func (a *App) SaveConfig(cfg *config.Config) error {
-	// 验证模板必须包含 $MAIN
-	if len(cfg.Template) > 0 {
-		hasMain := false
-		for _, seg := range cfg.Template {
-			if seg.Type == "voice" && seg.Text == "$MAIN" {
-				hasMain = true
-				break
-			}
-		}
-		if !hasMain {
-			return fmt.Errorf("模板必须包含 $MAIN（主文本）片段")
-		}
+	nextCfg, err := prepareConfigForSave(cfg)
+	if err != nil {
+		return err
 	}
-
-	nextCfg := cloneConfig(cfg)
 
 	// 保存到文件
 	configPath := config.FindConfigFile()
@@ -185,6 +181,67 @@ func (a *App) SaveConfig(cfg *config.Config) error {
 	a.cfg = nextCfg
 	a.initTTSEngine()
 	return nil
+}
+
+func prepareConfigForSave(cfg *config.Config) (*config.Config, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("配置不能为空")
+	}
+
+	nextCfg := cloneConfig(cfg)
+	nextCfg.TextFile = strings.TrimSpace(nextCfg.TextFile)
+	nextCfg.OutputDir = strings.TrimSpace(nextCfg.OutputDir)
+	nextCfg.ModelFile = strings.TrimSpace(nextCfg.ModelFile)
+	nextCfg.VoiceID = strings.TrimSpace(nextCfg.VoiceID)
+	if nextCfg.TextFile == "" {
+		nextCfg.TextFile = "text.txt"
+	}
+	if nextCfg.OutputDir == "" {
+		nextCfg.OutputDir = "output"
+	}
+	if nextCfg.FileNameMaxLength < 1 || nextCfg.FileNameMaxLength > 200 {
+		return nil, fmt.Errorf("文件名最大字符数必须在 1 到 200 之间")
+	}
+
+	floatFields := []struct {
+		name  string
+		value float64
+	}{
+		{name: "结束前截图秒数", value: nextCfg.ScreenshotBeforeEnd},
+		{name: "录屏开始延迟秒数", value: nextCfg.RecordingStartDelay},
+		{name: "录屏提前停止秒数", value: nextCfg.RecordingEndBeforeEnd},
+	}
+	for _, field := range floatFields {
+		if math.IsNaN(field.value) || math.IsInf(field.value, 0) || field.value < 0 {
+			return nil, fmt.Errorf("%s必须是非负数", field.name)
+		}
+	}
+
+	if len(nextCfg.Template) > 0 {
+		mainCount := 0
+		for index, segment := range nextCfg.Template {
+			switch segment.Type {
+			case "voice":
+				if strings.TrimSpace(segment.Text) == "" {
+					return nil, fmt.Errorf("模板第 %d 段的语音文本不能为空", index+1)
+				}
+				if segment.Text == "$MAIN" {
+					mainCount++
+				}
+			case "silence":
+				if math.IsNaN(segment.Seconds) || math.IsInf(segment.Seconds, 0) || segment.Seconds < 0 {
+					return nil, fmt.Errorf("模板第 %d 段的静音时长必须是非负数", index+1)
+				}
+			default:
+				return nil, fmt.Errorf("模板第 %d 段类型无效", index+1)
+			}
+		}
+		if mainCount != 1 {
+			return nil, fmt.Errorf("模板必须且只能包含一个 $MAIN（主文本）片段")
+		}
+	}
+
+	return nextCfg, nil
 }
 
 func cloneConfig(cfg *config.Config) *config.Config {
@@ -599,12 +656,24 @@ type UpdateDownloadResult struct {
 	SHA256   string `json:"sha256"`
 }
 
+type UpdateSource struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
 func (a *App) GetAppVersion() string {
 	return appVersion
 }
 
 func (a *App) GetDefaultUpdateURL() string {
 	return defaultUpdateURL
+}
+
+func (a *App) GetUpdateSources() []UpdateSource {
+	return []UpdateSource{
+		{Label: "公网 GitHub Release", URL: defaultUpdateURL},
+		{Label: "局域网备用", URL: lanUpdateURL},
+	}
 }
 
 func (a *App) CheckUpdate(updateJSONURL string) UpdateCheckResult {
@@ -645,9 +714,9 @@ func (a *App) DownloadUpdate(updateURL, expectedSHA256 string) UpdateDownloadRes
 	if updateURL == "" {
 		return UpdateDownloadResult{Success: false, Message: "更新包 URL 为空"}
 	}
-	parsed, err := url.Parse(updateURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return UpdateDownloadResult{Success: false, Message: "更新包 URL 无效"}
+	parsed, err := parseHTTPURL(updateURL, "更新包 URL")
+	if err != nil {
+		return UpdateDownloadResult{Success: false, Message: err.Error()}
 	}
 
 	fileName := filepath.Base(parsed.Path)
@@ -717,12 +786,12 @@ func (a *App) updateDownloadDir() string {
 }
 
 func fetchUpdateInfo(updateJSONURL string) (UpdateInfo, error) {
-	parsed, err := url.Parse(updateJSONURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return UpdateInfo{}, fmt.Errorf("版本清单 URL 无效")
+	parsed, err := parseHTTPURL(updateJSONURL, "版本清单 URL")
+	if err != nil {
+		return UpdateInfo{}, err
 	}
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get(updateJSONURL)
+	resp, err := client.Get(parsed.String())
 	if err != nil {
 		return UpdateInfo{}, fmt.Errorf("检查更新失败: %w", err)
 	}
@@ -730,8 +799,18 @@ func fetchUpdateInfo(updateJSONURL string) (UpdateInfo, error) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return UpdateInfo{}, fmt.Errorf("检查更新失败: HTTP %d", resp.StatusCode)
 	}
+	if resp.ContentLength > maxUpdateManifestBytes {
+		return UpdateInfo{}, fmt.Errorf("版本清单过大，最大允许 %d 字节", maxUpdateManifestBytes)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxUpdateManifestBytes+1))
+	if err != nil {
+		return UpdateInfo{}, fmt.Errorf("读取版本清单失败: %w", err)
+	}
+	if len(body) > maxUpdateManifestBytes {
+		return UpdateInfo{}, fmt.Errorf("版本清单过大，最大允许 %d 字节", maxUpdateManifestBytes)
+	}
 	var info UpdateInfo
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+	if err := json.Unmarshal(body, &info); err != nil {
 		return UpdateInfo{}, fmt.Errorf("解析版本清单失败: %w", err)
 	}
 	info.Version = strings.TrimSpace(info.Version)
@@ -751,13 +830,32 @@ func resolveUpdateURL(baseURL, updatePath string) (string, error) {
 		return "", fmt.Errorf("更新包 URL 无效: %w", err)
 	}
 	if parsedUpdate.IsAbs() {
-		return parsedUpdate.String(), nil
+		resolved, err := parseHTTPURL(parsedUpdate.String(), "更新包 URL")
+		if err != nil {
+			return "", err
+		}
+		return resolved.String(), nil
 	}
-	parsedBase, err := url.Parse(baseURL)
+	parsedBase, err := parseHTTPURL(baseURL, "版本清单 URL")
 	if err != nil {
-		return "", fmt.Errorf("版本清单 URL 无效: %w", err)
+		return "", err
 	}
-	return parsedBase.ResolveReference(parsedUpdate).String(), nil
+	resolved, err := parseHTTPURL(parsedBase.ResolveReference(parsedUpdate).String(), "更新包 URL")
+	if err != nil {
+		return "", err
+	}
+	return resolved.String(), nil
+}
+
+func parseHTTPURL(rawURL, label string) (*url.URL, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return nil, fmt.Errorf("%s 无效", label)
+	}
+	if !strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https") {
+		return nil, fmt.Errorf("%s 无效，仅支持 HTTP 或 HTTPS", label)
+	}
+	return parsed, nil
 }
 
 func compareVersions(a, b string) int {
@@ -903,18 +1001,45 @@ type InstallApkResult struct {
 
 // InstallApk 安装 APK 到指定设备
 func (a *App) InstallApk(serial, apkPath string) InstallApkResult {
+	apkPath = strings.TrimSpace(apkPath)
 	baseName := filepath.Base(apkPath)
-	cmd := adb.Command("-s", serial, "install", "-r", apkPath)
+	if apkPath == "" {
+		return InstallApkResult{Success: false, Message: "APK 文件路径不能为空"}
+	}
+	if !strings.EqualFold(filepath.Ext(apkPath), ".apk") {
+		return InstallApkResult{ApkFile: baseName, Success: false, Message: "请选择 .apk 文件"}
+	}
+	info, err := os.Stat(apkPath)
+	if err != nil {
+		return InstallApkResult{ApkFile: baseName, Success: false, Message: fmt.Sprintf("APK 文件不可用: %v", err)}
+	}
+	if info.IsDir() {
+		return InstallApkResult{ApkFile: baseName, Success: false, Message: "APK 路径不能是目录"}
+	}
+
+	resolvedSerial, err := a.resolveAdbDevice(serial)
+	if err != nil {
+		return InstallApkResult{ApkFile: baseName, Success: false, Message: err.Error()}
+	}
+
+	cmd := adb.Command("-s", resolvedSerial, "install", "-r", apkPath)
 	hideConsoleWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	outStr := strings.TrimSpace(string(output))
 	if err != nil {
-		return InstallApkResult{Serial: serial, ApkFile: baseName, Success: false, Message: fmt.Sprintf("%s: %v", outStr, err)}
+		message := err.Error()
+		if outStr != "" {
+			message = fmt.Sprintf("%s: %v", outStr, err)
+		}
+		return InstallApkResult{Serial: resolvedSerial, ApkFile: baseName, Success: false, Message: message}
 	}
 	if strings.Contains(outStr, "Success") {
-		return InstallApkResult{Serial: serial, ApkFile: baseName, Success: true, Message: "安装成功"}
+		return InstallApkResult{Serial: resolvedSerial, ApkFile: baseName, Success: true, Message: "安装成功"}
 	}
-	return InstallApkResult{Serial: serial, ApkFile: baseName, Success: false, Message: outStr}
+	if outStr == "" {
+		outStr = "ADB 未返回安装成功标记"
+	}
+	return InstallApkResult{Serial: resolvedSerial, ApkFile: baseName, Success: false, Message: outStr}
 }
 
 // AdbCommandResult ADB 命令执行结果
@@ -1995,7 +2120,10 @@ func (a *App) resolveAdbDevice(serial string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return resolveAdbDeviceFromList(devices)
+}
 
+func resolveAdbDeviceFromList(devices []string) (string, error) {
 	switch len(devices) {
 	case 0:
 		return "", fmt.Errorf("未检测到可用设备")
@@ -2007,6 +2135,9 @@ func (a *App) resolveAdbDevice(serial string) (string, error) {
 }
 
 func truncate(s string, maxLen int) string {
+	if maxLen < 1 {
+		maxLen = defaultFileNameMaxLength
+	}
 	runes := []rune(s)
 	if len(runes) <= maxLen {
 		return s

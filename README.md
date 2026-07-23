@@ -90,6 +90,7 @@ scripts\build.bat -Target gui
 构建产物在 `dist/` 目录，版本号格式为 `YYYY.MMDD.HHMM`：
 - `tts-linux-amd64-v2025.1222.1723.tar.gz`
 - `tts-gui-windows-amd64-v2025.1222.1723.zip`
+- `latest.json`（Windows GUI 更新清单，包含版本、zip 文件名和 SHA256）
 
 > 注意：`gui/frontend/dist/index.html` 虽然位于 `dist` 目录下，但它是 Wails 通过 `go:embed all:frontend/dist` 嵌入的 GUI 页面。当前仓库没有独立前端源码，因此该文件必须纳入版本控制；否则其它电脑克隆后无法复现 Windows GUI 构建。
 
@@ -342,7 +343,7 @@ GUI 版本基于 Wails 框架开发，提供完整图形界面，包含 6 个功
 | **生成语音** | 文本列表管理，批量 TTS 生成，实时进度（支持中途停止） |
 | **播放模式** | 选择目标设备后执行播放测试，自动采集 logcat / 截图 / 录屏并输出独立会话目录（支持中途停止） |
 | **配置设置** | 语音引擎选择，模板可视化编辑，视频录制参数配置 |
-| **软件更新** | 从局域网 `latest.json` 检查版本、下载 zip、校验 SHA256 并打开更新目录 |
+| **软件更新** | 默认从 GitHub Release 公网源检查版本、下载 zip、校验 SHA256 并打开更新目录，可切换局域网备用源 |
 
 ```
 tts-gui-windows-amd64/
@@ -367,15 +368,41 @@ ISCC installer/setup.iss
 
 安装包版本号自动生成，格式：`YYYY.MMDD.HHMM`
 
-## Windows GUI 局域网更新
+## Windows GUI 公网更新
 
-Windows GUI 支持从局域网文件服务手动检查更新、下载更新包并打开下载目录。默认版本清单地址为：
+Windows GUI 默认从公开的 GitHub Release 检查更新，因此只要电脑能访问公网 GitHub，就不需要连接 `172.16.15.15` 所在局域网。固定版本清单地址为：
 
 ```text
-http://172.16.15.15/latest.json
+https://github.com/paynewinnt/voice-qa/releases/latest/download/latest.json
 ```
 
-GUI 默认只负责下载，不会在运行中覆盖自身。下载完成后需要关闭程序，手动解压 zip；更新包会保存到当前程序目录的上一级，便于新版本目录与旧版本目录同级放置。完整 IIS 部署、`latest.json` 格式、SHA256 校验和排障步骤见 [Windows GUI 局域网更新指南](docs/windows-gui-lan-update.md)。
+执行 `./scripts/build.sh gui` 或 `scripts\build.bat -Target gui` 后，`dist/` 会同时生成 GUI zip 和 `latest.json`。发布前先提交并推送对应源码，再把这两个文件上传到同一个 GitHub Release：
+
+```bash
+VERSION=2026.0714.1800
+gh release create "v${VERSION}" \
+  "dist/tts-gui-windows-amd64-v${VERSION}.zip" \
+  "dist/latest.json" \
+  --repo paynewinnt/voice-qa \
+  --title "v${VERSION}" \
+  --notes "Windows GUI v${VERSION}" \
+  --latest
+```
+
+Release 中必须同时存在以下两个资产：
+
+```text
+latest.json
+tts-gui-windows-amd64-v<version>.zip
+```
+
+`latest.json` 中的 `url` 是 zip 文件名，GUI 会相对于清单地址解析为同一个最新 Release 下的 zip。发布后可在任意公网电脑验证：
+
+```bash
+curl -fL https://github.com/paynewinnt/voice-qa/releases/latest/download/latest.json
+```
+
+GUI 只负责下载，不会在运行中覆盖自身。下载完成后需要关闭程序，手动解压 zip；更新包会保存到当前程序目录的上一级，便于新版本目录与旧版本目录同级放置。若部分电脑不能访问 GitHub，可在更新页切换到 `http://172.16.15.15/latest.json`；完整 IIS 部署和排障步骤见 [Windows GUI 局域网备用更新指南](docs/windows-gui-lan-update.md)。
 
 ## 技术栈
 

@@ -64,6 +64,38 @@ require_download_allowed() {
     fi
 }
 
+sha256_file() {
+    local file_path="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file_path" | awk '{print $1}'
+        return
+    fi
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file_path" | awk '{print $1}'
+        return
+    fi
+    echo "缺少 sha256sum 或 shasum，无法生成更新清单" >&2
+    return 1
+}
+
+write_update_manifest() {
+    local archive_path="$1"
+    local archive_name
+    local archive_sha256
+    archive_name="$(basename "$archive_path")"
+    archive_sha256="$(sha256_file "$archive_path")"
+
+    cat > "$DIST_DIR/latest.json" << EOF
+{
+  "version": "${VERSION}",
+  "notes": "Windows GUI v${VERSION}",
+  "url": "${archive_name}",
+  "sha256": "${archive_sha256}"
+}
+EOF
+    echo "  -> $DIST_DIR/latest.json"
+}
+
 # 构建 Linux amd64
 build_linux() {
     echo "构建 Linux amd64..."
@@ -579,9 +611,11 @@ EOF
         cp "$PROJECT_DIR/scripts/README.txt" "$OUTPUT_DIR/"
     fi
 
-    # 打包
+    # 打包并生成 GitHub Release 更新清单
+    local ARCHIVE_PATH="$DIST_DIR/${PACKAGE_NAME}.zip"
     (cd "$DIST_DIR" && zip -rq "${PACKAGE_NAME}.zip" "$PACKAGE_NAME")
-    echo "  -> $DIST_DIR/${PACKAGE_NAME}.zip"
+    echo "  -> $ARCHIVE_PATH"
+    write_update_manifest "$ARCHIVE_PATH"
 }
 
 # 执行构建

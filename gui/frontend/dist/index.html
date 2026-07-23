@@ -31,7 +31,7 @@
 
         .container {
             width: 100%;
-            max-width: 1680px;
+            max-width: none;
             margin: 0 auto;
         }
 
@@ -159,6 +159,139 @@
             grid-column: span 4;
         }
 
+        .generate-text-section {
+            grid-column: span 5;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 170px);
+            min-height: 560px;
+        }
+
+        .generate-task-section {
+            grid-column: span 7;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 170px);
+            min-height: 560px;
+        }
+
+        #generate.tab-content.active {
+            align-items: stretch;
+        }
+
+        #generate .text-list {
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: none;
+        }
+
+        #generate .generate-task-section .output-console.active {
+            flex: 1 1 auto;
+            min-height: 220px;
+            max-height: none;
+        }
+
+        .config-toolbar {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 14px;
+            min-height: 38px;
+            padding: 0 2px;
+        }
+
+        .config-toolbar .status-text {
+            margin: 0 auto 0 0;
+        }
+
+        .config-toolbar-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .config-column {
+            display: grid;
+            gap: 16px;
+            min-width: 0;
+            align-content: start;
+        }
+
+        .config-column.narrow {
+            grid-column: span 4;
+        }
+
+        .config-column.wide {
+            grid-column: span 8;
+        }
+
+        .config-column > .feature-section {
+            grid-column: auto;
+        }
+
+        #config .form-group {
+            margin-bottom: 14px;
+        }
+
+        #config .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .field-help {
+            margin-top: 6px;
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .update-source-list {
+            display: grid;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .update-source-row {
+            display: grid;
+            grid-template-columns: minmax(130px, auto) minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            padding: 9px 10px;
+            border: 1px solid #d9e0ec;
+            border-radius: 6px;
+            background: #f8fafc;
+            font-size: 12px;
+        }
+
+        .update-source-label {
+            font-weight: 600;
+            color: #1d2a44;
+        }
+
+        .update-source-url {
+            min-width: 0;
+            color: #334155;
+            font-family: Consolas, Monaco, monospace;
+            overflow-wrap: anywhere;
+        }
+
+        .config-number {
+            width: 100% !important;
+            max-width: 240px;
+        }
+
+        .config-toggle {
+            display: flex !important;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .config-toggle input {
+            width: auto !important;
+            margin: 0;
+        }
+
         .tone-blue { --section-accent: #2563a9; }
         .tone-cyan { --section-accent: #0e7490; }
         .tone-green { --section-accent: #27815a; }
@@ -172,7 +305,7 @@
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         .form-group label {
@@ -388,10 +521,11 @@
         }
 
         .text-list {
-            border: 1px solid #ddd;
-            border-radius: 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
             max-height: 300px;
             overflow-y: auto;
+            background: #ffffff;
         }
 
         .text-item {
@@ -757,8 +891,22 @@
         @media (max-width: 1080px) {
             .feature-section.half,
             .feature-section.two-thirds,
-            .feature-section.one-third {
+            .feature-section.one-third,
+            .generate-text-section,
+            .generate-task-section,
+            .config-column.narrow,
+            .config-column.wide {
                 grid-column: 1 / -1;
+            }
+
+            .generate-text-section {
+                height: 520px;
+                min-height: 520px;
+            }
+
+            .generate-task-section {
+                height: auto;
+                min-height: auto;
             }
         }
 
@@ -794,9 +942,35 @@
             .feature-section,
             .feature-section.half,
             .feature-section.two-thirds,
-            .feature-section.one-third {
+            .feature-section.one-third,
+            .generate-text-section,
+            .generate-task-section {
                 grid-column: 1;
                 padding: 14px;
+            }
+
+            .generate-text-section {
+                height: auto;
+                min-height: auto;
+            }
+
+            #generate .text-list {
+                min-height: 280px;
+                max-height: 440px;
+            }
+
+            .config-toolbar {
+                align-items: stretch;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .config-toolbar .status-text {
+                margin: 0;
+            }
+
+            .config-toolbar-actions .btn {
+                flex: 1 1 140px;
             }
 
             .form-row,
@@ -838,6 +1012,15 @@
 
             .btn-group .btn {
                 flex: 1 1 150px;
+            }
+
+            .update-source-row {
+                grid-template-columns: minmax(0, 1fr) auto;
+            }
+
+            .update-source-url {
+                grid-column: 1 / -1;
+                grid-row: 2;
             }
         }
 
@@ -926,7 +1109,7 @@
         .footer {
             position: static;
             width: 100%;
-            max-width: 1680px;
+            max-width: none;
             margin: 0 auto;
             padding: 0 4px;
             text-align: right;
@@ -1105,13 +1288,13 @@
                     <span class="section-title">安装 APK</span>
                 </div>
 
-                <div class="alert alert-info" style="font-size:13px;">选中上方设备列表中的目标设备，然后选择 APK 文件进行安装（支持多选）。</div>
+                <div class="alert alert-info" id="devInstallHint" style="font-size:13px;">正在检查设备；仅有一台设备时会自动安装，多台设备时需要勾选目标设备。</div>
 
                 <div id="devApkList" style="margin-bottom:10px;"></div>
 
                 <div style="display:flex;gap:10px;flex-wrap:wrap;">
                     <button class="btn btn-secondary" onclick="devSelectApks()">选择 APK 文件</button>
-                    <button class="btn btn-primary" id="devInstallBtn" onclick="devInstallApks()">安装到选中设备</button>
+                    <button class="btn btn-primary" id="devInstallBtn" onclick="devInstallApks()" disabled>安装 APK</button>
                 </div>
 
                 <div class="status-text" id="devInstallStatus"></div>
@@ -1521,7 +1704,7 @@
 
             <!-- 生成语音 -->
             <div id="generate" class="tab-content">
-                <section class="feature-section one-third tone-blue">
+                <section class="feature-section generate-text-section tone-blue">
                 <div class="section-header">
                     <span class="section-title">文本列表</span>
                     <button class="btn btn-secondary" onclick="openTextFile()" style="padding: 8px 16px; font-size: 13px;">打开文件编辑</button>
@@ -1538,7 +1721,7 @@
                 </div>
                 </section>
 
-                <section class="feature-section two-thirds tone-green">
+                <section class="feature-section generate-task-section tone-green">
                 <div class="section-header">
                     <span class="section-title">生成任务</span>
                 </div>
@@ -1627,111 +1810,105 @@
 
             <!-- 配置设置 -->
             <div id="config" class="tab-content">
-                <section class="feature-section one-third tone-blue">
-                <div class="section-header">
-                    <span class="section-title">语音引擎配置</span>
-                </div>
-
-                <div class="form-group">
-                    <label>选择语音</label>
-                    <select id="voiceSelect" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;">
-                        <option value="">加载中...</option>
-                    </select>
-                    <div style="margin-top: 8px; font-size: 12px; color: #666;">
-                        提示：Edge 语音需要联网，Piper 语音离线可用
-                    </div>
-                    <div class="status-text" id="voiceStatus">正在加载语音列表...</div>
-                </div>
-                </section>
-
-                <section class="feature-section two-thirds tone-violet">
-                <div class="section-header" style="margin-top: 20px;">
-                    <span class="section-title">语音模板配置</span>
-                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                        提示：$MAIN 代表主文本内容（必须保留）
+                <div class="config-toolbar">
+                    <div class="status-text" id="configSaveStatus">正在加载配置...</div>
+                    <div class="config-toolbar-actions">
+                        <button class="btn btn-primary" id="configSaveBtn" onclick="saveConfig()">保存配置</button>
+                        <button class="btn btn-secondary" id="configReloadBtn" onclick="reloadConfigPanel()">重新加载</button>
                     </div>
                 </div>
 
-                <div id="templateEditor" style="margin-bottom: 15px;">
-                    <!-- 模板列表将通过 JavaScript 动态生成 -->
-                </div>
-
-                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                    <button class="btn btn-secondary" onclick="addTemplateSegment('voice')">+ 添加语音</button>
-                    <button class="btn btn-secondary" onclick="addTemplateSegment('silence')">+ 添加静音</button>
-                </div>
-                </section>
-
-                <section class="feature-section one-third tone-green">
-                <div class="section-header" style="margin-top: 20px;">
-                    <span class="section-title">播放模式配置</span>
-                </div>
-
-                <div class="form-group">
-                    <label>结束前截图(秒)</label>
-                    <input type="number" id="screenshotBeforeEnd" value="12" step="0.5" style="width: 150px;">
-                </div>
-                </section>
-
-                <section class="feature-section two-thirds tone-cyan">
-                <div class="section-header" style="margin-top: 20px;">
-                    <span class="section-title">视频录制配置</span>
-                </div>
-
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="enableVideoRecording" style="width: auto; margin-right: 10px;">
-                        启用视频录制
-                    </label>
-                    <div style="margin-top: 8px; font-size: 12px; color: #666;">
-                        勾选后，播放模式会录制设备屏幕视频
-                    </div>
-                </div>
-
-                <div class="form-row-2" id="videoRecordingOptions">
-                    <div class="form-group">
-                        <label>开始后延迟录制(秒)</label>
-                        <input type="number" id="recordingStartDelay" value="5" step="0.5" min="0" style="width: 150px;">
-                        <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                            音频开始播放后等待多少秒开始录制
+                <div class="config-column narrow">
+                    <section class="feature-section tone-blue">
+                        <div class="section-header">
+                            <span class="section-title">语音引擎配置</span>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label>结束前提前停止(秒)</label>
-                        <input type="number" id="recordingEndBeforeEnd" value="5" step="0.5" min="0" style="width: 150px;">
-                        <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                            音频结束前多少秒停止录制
+
+                        <div class="form-group">
+                            <label for="voiceSelect">选择语音</label>
+                            <select id="voiceSelect">
+                                <option value="">加载中...</option>
+                            </select>
+                            <div class="field-help">Edge 语音需要联网，Piper 语音可离线使用</div>
+                            <div class="status-text" id="voiceStatus">正在加载语音列表...</div>
                         </div>
-                    </div>
-                </div>
-                </section>
+                    </section>
 
-                <section class="feature-section tone-slate">
-                <div class="section-header" style="margin-top: 20px;">
-                    <span class="section-title">文件配置</span>
+                    <section class="feature-section tone-green">
+                        <div class="section-header">
+                            <span class="section-title">播放模式配置</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="screenshotBeforeEnd">结束前截图（秒）</label>
+                            <input class="config-number" type="number" id="screenshotBeforeEnd" value="12" step="0.5" min="0" required>
+                        </div>
+                    </section>
+
+                    <section class="feature-section tone-slate">
+                        <div class="section-header">
+                            <span class="section-title">文件配置</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="textFile">文本文件路径</label>
+                            <input type="text" id="textFile" value="text.txt">
+                        </div>
+                        <div class="form-group">
+                            <label for="outputDir">输出目录</label>
+                            <input type="text" id="outputDir" value="output">
+                        </div>
+                        <div class="form-group">
+                            <label for="filenameMaxLength">文件名最大字符数</label>
+                            <input class="config-number" type="number" id="filenameMaxLength" value="30" min="1" max="200" step="1" required>
+                        </div>
+                    </section>
                 </div>
 
-                <div class="form-row-2">
-                    <div class="form-group">
-                        <label>文本文件路径</label>
-                        <input type="text" id="textFile" value="text.txt">
-                    </div>
-                    <div class="form-group">
-                        <label>输出目录</label>
-                        <input type="text" id="outputDir" value="output">
-                    </div>
-                </div>
+                <div class="config-column wide">
+                    <section class="feature-section tone-violet">
+                        <div class="section-header">
+                            <span class="section-title">语音模板配置</span>
+                            <div class="field-help">$MAIN 代表主文本，必须且只能保留一个</div>
+                        </div>
 
-                <div class="form-group">
-                    <label>文件名最大字符数</label>
-                    <input type="number" id="filenameMaxLength" value="30" style="width: 150px;">
-                </div>
+                        <div id="templateEditor" style="margin-bottom: 15px;">
+                            <!-- 模板列表将通过 JavaScript 动态生成 -->
+                        </div>
 
-                <div class="btn-group">
-                    <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
-                    <button class="btn btn-secondary" onclick="reloadConfigPanel()">重新加载</button>
+                        <div class="btn-group" style="margin-top: 0;">
+                            <button class="btn btn-secondary" onclick="addTemplateSegment('voice')">+ 添加语音</button>
+                            <button class="btn btn-secondary" onclick="addTemplateSegment('silence')">+ 添加静音</button>
+                        </div>
+                    </section>
+
+                    <section class="feature-section tone-cyan">
+                        <div class="section-header">
+                            <span class="section-title">视频录制配置</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="config-toggle" for="enableVideoRecording">
+                                <input type="checkbox" id="enableVideoRecording">
+                                启用视频录制
+                            </label>
+                            <div class="field-help">启用后，播放模式会录制设备屏幕</div>
+                        </div>
+
+                        <div class="form-row-2" id="videoRecordingOptions">
+                            <div class="form-group">
+                                <label for="recordingStartDelay">开始后延迟录制（秒）</label>
+                                <input class="config-number" type="number" id="recordingStartDelay" value="5" step="0.5" min="0" required>
+                                <div class="field-help">音频开始后等待多久启动录屏</div>
+                            </div>
+                            <div class="form-group">
+                                <label for="recordingEndBeforeEnd">结束前提前停止（秒）</label>
+                                <input class="config-number" type="number" id="recordingEndBeforeEnd" value="5" step="0.5" min="0" required>
+                                <div class="field-help">音频结束前提前多久停止录屏</div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
-                </section>
             </div>
 
             <!-- 软件更新 -->
@@ -1742,15 +1919,15 @@
                 </div>
 
                 <div class="alert alert-info" style="font-size:13px;">
-                    从局域网 Windows 文件服务读取版本清单，更新包会下载到当前程序目录的上一级，解压后与旧版本目录同级。
+                    默认从 GitHub Release 公网源读取版本清单；局域网文件服务保留为备用。更新包会下载到当前程序目录的上一级。
                 </div>
 
                 <div class="form-group">
                     <label>版本清单地址</label>
-                    <input type="text" id="updateManifestUrl" value="http://172.16.15.15/latest.json">
-                    <div id="updatePresetUrls" style="display:grid;gap:8px;margin-top:10px;"></div>
-                    <div style="margin-top: 8px; font-size: 12px; color: #666;">
-                        局域网文件服务需提供 latest.json 和更新包，下载完成后关闭旧程序，解压新包并运行新版本。
+                    <input type="text" id="updateManifestUrl" value="https://github.com/paynewinnt/voice-qa/releases/latest/download/latest.json" spellcheck="false">
+                    <div id="updatePresetUrls" class="update-source-list"></div>
+                    <div class="field-help">
+                        公网源需要能访问 GitHub。下载完成后关闭旧程序，解压新包并运行新版本；程序不会覆盖正在运行的版本。
                     </div>
                 </div>
 
@@ -1938,6 +2115,7 @@
             try {
                 globalDevices = await window.go.main.App.GetConnectedDevices() || [];
                 devRenderList();
+                devSyncInstallTargetState();
                 devSyncCommandDeviceSelect();
                 devSyncRecordDeviceSelect();
                 devSyncLogDeviceSelect();
@@ -1960,19 +2138,46 @@
         // 渲染设备列表
         function devRenderList() {
             const tbody = document.getElementById('devListBody');
+            const selectAll = document.getElementById('devSelectAll');
+            selectAll.checked = false;
             if (globalDevices.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="3" style="padding:15px;text-align:center;color:#999;">暂无已连接设备</td></tr>';
                 return;
             }
-            tbody.innerHTML = globalDevices.map((d, i) => `
-                <tr style="border-bottom:1px solid #eee;">
-                    <td style="padding:8px 12px;"><input type="checkbox" class="dev-check" value="${d}" style="width:auto;"></td>
-                    <td style="padding:8px 12px;font-family:monospace;font-size:13px;">${d}</td>
-                    <td style="padding:8px 12px;text-align:center;">
-                        <button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="devDisconnectOne('${d}')">断开</button>
-                    </td>
-                </tr>
-            `).join('');
+            tbody.replaceChildren();
+            globalDevices.forEach(serial => {
+                const row = document.createElement('tr');
+                row.style.borderBottom = '1px solid #eee';
+
+                const checkCell = document.createElement('td');
+                checkCell.style.padding = '8px 12px';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'dev-check';
+                checkbox.value = serial;
+                checkbox.style.width = 'auto';
+                checkCell.appendChild(checkbox);
+
+                const serialCell = document.createElement('td');
+                serialCell.style.padding = '8px 12px';
+                serialCell.style.fontFamily = 'Consolas, Monaco, monospace';
+                serialCell.style.fontSize = '13px';
+                serialCell.textContent = serial;
+
+                const actionCell = document.createElement('td');
+                actionCell.style.padding = '8px 12px';
+                actionCell.style.textAlign = 'center';
+                const disconnectButton = document.createElement('button');
+                disconnectButton.className = 'btn btn-danger';
+                disconnectButton.style.padding = '4px 10px';
+                disconnectButton.style.fontSize = '12px';
+                disconnectButton.textContent = '断开';
+                disconnectButton.addEventListener('click', () => devDisconnectOne(serial));
+                actionCell.appendChild(disconnectButton);
+
+                row.append(checkCell, serialCell, actionCell);
+                tbody.appendChild(row);
+            });
         }
 
         // 全选/取消全选
@@ -2103,9 +2308,9 @@
             try {
                 const files = await window.go.main.App.SelectApkFiles();
                 if (files && files.length > 0) {
-                    devSelectedApks = files;
+                    devSelectedApks = [...new Set(files)];
                     devRenderApkList();
-                    devAppendOutput('已选择 ' + files.length + ' 个 APK 文件', 'info');
+                    devAppendOutput('已选择 ' + devSelectedApks.length + ' 个 APK 文件', 'info');
                 }
             } catch (e) {
                 devAppendOutput('选择文件失败: ' + e, 'error');
@@ -2115,17 +2320,27 @@
         // 渲染已选 APK 列表
         function devRenderApkList() {
             const container = document.getElementById('devApkList');
+            container.replaceChildren();
             if (devSelectedApks.length === 0) {
-                container.innerHTML = '';
                 return;
             }
-            container.innerHTML = devSelectedApks.map((f, i) => {
-                const name = f.split(/[/\\]/).pop();
-                return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:4px;background:#f8f9fa;border-radius:6px;font-size:13px;">
-                    <span style="flex:1;font-family:monospace;">${name}</span>
-                    <button style="border:none;background:#dc3545;color:white;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px;" onclick="devRemoveApk(${i})">移除</button>
-                </div>`;
-            }).join('');
+            devSelectedApks.forEach((filePath, index) => {
+                const item = document.createElement('div');
+                item.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:4px;background:#f8f9fa;border:1px solid #e5e9f0;border-radius:6px;font-size:13px;';
+
+                const name = document.createElement('span');
+                name.style.cssText = 'flex:1;min-width:0;font-family:Consolas,Monaco,monospace;overflow-wrap:anywhere;';
+                name.textContent = filePath.split(/[/\\]/).pop();
+
+                const removeButton = document.createElement('button');
+                removeButton.className = 'btn btn-danger';
+                removeButton.style.cssText = 'padding:4px 9px;font-size:12px;';
+                removeButton.textContent = '移除';
+                removeButton.addEventListener('click', () => devRemoveApk(index));
+
+                item.append(name, removeButton);
+                container.appendChild(item);
+            });
         }
 
         // 移除某个 APK
@@ -2134,10 +2349,44 @@
             devRenderApkList();
         }
 
-        // 安装 APK 到选中设备
-        async function devInstallApks() {
+        function devSyncInstallTargetState() {
+            const hint = document.getElementById('devInstallHint');
+            const button = document.getElementById('devInstallBtn');
+            if (globalDevices.length === 0) {
+                hint.textContent = '未检测到设备。连接设备后可选择一个或多个 APK 文件进行安装。';
+                button.textContent = '安装 APK';
+                button.disabled = true;
+                return;
+            }
+            button.disabled = false;
+            if (globalDevices.length === 1) {
+                hint.textContent = `当前只有一台设备，将直接安装到 ${globalDevices[0]}，无需勾选设备。`;
+                button.textContent = '安装到唯一设备';
+                return;
+            }
+            hint.textContent = `当前有 ${globalDevices.length} 台设备，请在上方列表勾选一个或多个安装目标。`;
+            button.textContent = '安装到选中设备';
+        }
+
+        function devGetInstallTargets() {
+            if (globalDevices.length === 0) {
+                alert('未检测到可用设备，请先连接或刷新设备列表');
+                return [];
+            }
+            if (globalDevices.length === 1) {
+                return [globalDevices[0]];
+            }
             const selected = devGetSelected();
-            if (selected.length === 0) { alert('请先勾选目标设备'); return; }
+            if (selected.length === 0) {
+                alert('检测到多台设备，请先勾选一个或多个安装目标');
+            }
+            return selected;
+        }
+
+        // 安装 APK；唯一设备自动选择，多设备使用勾选结果
+        async function devInstallApks() {
+            const selected = devGetInstallTargets();
+            if (selected.length === 0) return;
             if (devSelectedApks.length === 0) { alert('请先选择 APK 文件'); return; }
 
             const btn = document.getElementById('devInstallBtn');
@@ -2170,8 +2419,7 @@
             }
 
             statusEl.textContent = `安装完成：${successCount}/${total} 成功`;
-            btn.disabled = false;
-            btn.textContent = '安装到选中设备';
+            devSyncInstallTargetState();
         }
 
         // 设备管理输出控制台
@@ -3433,31 +3681,49 @@
             try {
                 const version = await window.go.main.App.GetAppVersion();
                 const defaultUrl = await window.go.main.App.GetDefaultUpdateURL();
-                renderUpdatePresetUrls(defaultUrl || 'http://172.16.15.15/latest.json');
-                document.getElementById('updateManifestUrl').value = defaultUrl || 'http://172.16.15.15/latest.json';
+                const fallbackUrl = 'https://github.com/paynewinnt/voice-qa/releases/latest/download/latest.json';
+                let sources = [{ label: '公网 GitHub Release', url: defaultUrl || fallbackUrl }];
+                if (typeof window.go.main.App.GetUpdateSources === 'function') {
+                    const backendSources = await window.go.main.App.GetUpdateSources();
+                    if (Array.isArray(backendSources) && backendSources.length > 0) {
+                        sources = backendSources;
+                    }
+                }
+                renderUpdatePresetUrls(sources);
+                document.getElementById('updateManifestUrl').value = defaultUrl || fallbackUrl;
                 document.getElementById('updateStatus').textContent = '当前版本: ' + version;
             } catch (e) {
                 document.getElementById('updateStatus').textContent = '当前版本: 获取失败';
             }
         }
 
-        function renderUpdatePresetUrls(internalUrl) {
+        function renderUpdatePresetUrls(sources) {
             const container = document.getElementById('updatePresetUrls');
             if (!container) return;
-            const rows = [
-                { label: '内网地址', url: internalUrl }
-            ].filter(item => item.url);
-            container.innerHTML = rows.map(item => `
-                <div style="display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border:1px solid #d9e0ec;border-radius:8px;background:#f8fafc;font-size:12px;">
-                    <span style="font-weight:600;color:#1d2a44;">${item.label}</span>
-                    <span style="font-family:Consolas,Monaco,monospace;color:#334155;overflow-wrap:anywhere;">${item.url}</span>
-                    <button class="btn btn-secondary" type="button" onclick="useUpdateManifestUrl('${escapeJsString(item.url)}')" style="padding:6px 10px;font-size:12px;">使用</button>
-                </div>
-            `).join('');
-        }
+            container.replaceChildren();
+            (Array.isArray(sources) ? sources : []).filter(item => item && item.url).forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'update-source-row';
 
-        function escapeJsString(value) {
-            return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, '');
+                const label = document.createElement('span');
+                label.className = 'update-source-label';
+                label.textContent = item.label || '更新源';
+
+                const url = document.createElement('span');
+                url.className = 'update-source-url';
+                url.textContent = item.url;
+
+                const button = document.createElement('button');
+                button.className = 'btn btn-secondary';
+                button.type = 'button';
+                button.textContent = '使用';
+                button.style.padding = '6px 10px';
+                button.style.fontSize = '12px';
+                button.addEventListener('click', () => useUpdateManifestUrl(item.url));
+
+                row.append(label, url, button);
+                container.appendChild(row);
+            });
         }
 
         function useUpdateManifestUrl(url) {
@@ -3801,11 +4067,12 @@
                     emptyOption.textContent = '未加载到可用语音';
                     select.appendChild(emptyOption);
                     status.textContent = '后端未返回可用语音，请点击重新加载。';
-                    return;
+                    return false;
                 }
 
                 // 设置当前选中的声音
-                const currentVoiceID = String(cfg?.voice_id ?? cfg?.VoiceID ?? 'edge:zh-CN-YunjianNeural');
+                const configuredVoiceID = String(cfg?.voice_id ?? cfg?.VoiceID ?? '').trim();
+                const currentVoiceID = configuredVoiceID || 'piper:zh_CN-huayan-medium';
                 if (![...select.options].some(option => option.value === currentVoiceID)) {
                     const currentOption = document.createElement('option');
                     currentOption.value = currentVoiceID;
@@ -3815,11 +4082,13 @@
                 select.value = currentVoiceID;
                 select.disabled = false;
                 status.textContent = `已加载 ${voices.length} 个声音：Edge ${edgeVoices.length}，Piper ${piperVoices.length}`;
+                return true;
             } catch (e) {
                 console.error('加载声音列表失败:', e);
                 select.innerHTML = '<option value="">语音列表加载失败</option>';
                 select.disabled = true;
                 status.textContent = '语音列表加载失败，请点击重新加载。';
+                return false;
             }
         }
 
@@ -3827,10 +4096,13 @@
         async function onVoiceChange() {
             const select = document.getElementById('voiceSelect');
             const voiceId = select.value;
+            if (!voiceId) return;
             try {
                 await window.go.main.App.SetVoice(voiceId);
+                document.getElementById('voiceStatus').textContent = '当前语音已切换，保存配置后下次启动继续使用。';
             } catch (e) {
                 console.error('设置声音失败:', e);
+                document.getElementById('voiceStatus').textContent = '切换语音失败: ' + e;
             }
         }
 
@@ -3838,6 +4110,7 @@
         async function loadConfig() {
             try {
                 const cfg = await window.go.main.App.GetConfig();
+                if (!cfg) throw new Error('后端未返回配置');
 
                 // 加载模板
                 if (cfg.template && cfg.template.length > 0) {
@@ -3887,13 +4160,24 @@
 
                 // 更新音频结构显示
                 updateAudioStructure();
+                return true;
             } catch (e) {
                 console.error('加载配置失败:', e);
+                return false;
             }
         }
 
         async function reloadConfigPanel() {
-            await Promise.all([loadConfig(), loadVoices()]);
+            const status = document.getElementById('configSaveStatus');
+            const saveButton = document.getElementById('configSaveBtn');
+            const reloadButton = document.getElementById('configReloadBtn');
+            status.textContent = '正在加载配置...';
+            saveButton.disabled = true;
+            reloadButton.disabled = true;
+            const [configLoaded, voicesLoaded] = await Promise.all([loadConfig(), loadVoices()]);
+            status.textContent = configLoaded && voicesLoaded ? '配置已加载' : '部分配置加载失败，请重试';
+            saveButton.disabled = false;
+            reloadButton.disabled = false;
         }
 
         // 更新视频录制选项显示状态
@@ -3931,31 +4215,98 @@
 
         // 保存配置
         async function saveConfig() {
-            // 验证模板必须包含 $MAIN
-            const hasMain = currentTemplate.some(s => s.type === 'voice' && s.text === '$MAIN');
-            if (!hasMain) {
-                alert('模板必须包含主文本 ($MAIN)');
+            const mainCount = currentTemplate.filter(s => s.type === 'voice' && s.text === '$MAIN').length;
+            if (mainCount !== 1) {
+                alert('模板必须且只能包含一个主文本 ($MAIN)');
                 return;
             }
 
+            for (let index = 0; index < currentTemplate.length; index++) {
+                const segment = currentTemplate[index];
+                if (segment.type === 'voice' && !String(segment.text || '').trim()) {
+                    alert(`模板第 ${index + 1} 段的语音文本不能为空`);
+                    return;
+                }
+                if (segment.type === 'silence' && (!Number.isFinite(Number(segment.seconds)) || Number(segment.seconds) < 0)) {
+                    alert(`模板第 ${index + 1} 段的静音时长必须是非负数`);
+                    return;
+                }
+                if (segment.type !== 'voice' && segment.type !== 'silence') {
+                    alert(`模板第 ${index + 1} 段类型无效`);
+                    return;
+                }
+            }
+
+            const screenshotInput = document.getElementById('screenshotBeforeEnd');
+            const recordingStartInput = document.getElementById('recordingStartDelay');
+            const recordingEndInput = document.getElementById('recordingEndBeforeEnd');
+            const filenameLengthInput = document.getElementById('filenameMaxLength');
+            if ([screenshotInput, recordingStartInput, recordingEndInput, filenameLengthInput].some(input => input.value.trim() === '')) {
+                alert('数值配置不能为空');
+                return;
+            }
+            const screenshotBeforeEnd = Number(screenshotInput.value);
+            const recordingStartDelay = Number(recordingStartInput.value);
+            const recordingEndBeforeEnd = Number(recordingEndInput.value);
+            const filenameMaxLength = Number(filenameLengthInput.value);
+            const numericFields = [
+                ['结束前截图秒数', screenshotBeforeEnd],
+                ['录屏开始延迟秒数', recordingStartDelay],
+                ['录屏提前停止秒数', recordingEndBeforeEnd]
+            ];
+            for (const [name, value] of numericFields) {
+                if (!Number.isFinite(value) || value < 0) {
+                    alert(name + '必须是非负数');
+                    return;
+                }
+            }
+            if (!Number.isInteger(filenameMaxLength) || filenameMaxLength < 1 || filenameMaxLength > 200) {
+                alert('文件名最大字符数必须是 1 到 200 之间的整数');
+                return;
+            }
+
+            const voiceSelect = document.getElementById('voiceSelect');
+            if (voiceSelect.disabled || !voiceSelect.value) {
+                alert('语音列表尚未加载完成，请重新加载后再保存');
+                return;
+            }
+
+            const textFileInput = document.getElementById('textFile');
+            const outputDirInput = document.getElementById('outputDir');
+            const textFile = textFileInput.value.trim() || 'text.txt';
+            const outputDir = outputDirInput.value.trim() || 'output';
+
             const cfg = {
                 template: currentTemplate,
-                screenshot_before_end: parseFloat(document.getElementById('screenshotBeforeEnd').value),
+                screenshot_before_end: screenshotBeforeEnd,
                 enable_video_recording: document.getElementById('enableVideoRecording').checked,
-                recording_start_delay: parseFloat(document.getElementById('recordingStartDelay').value),
-                recording_end_before_end: parseFloat(document.getElementById('recordingEndBeforeEnd').value),
-                text_file: document.getElementById('textFile').value,
-                output_dir: document.getElementById('outputDir').value,
-                filename_max_length: parseInt(document.getElementById('filenameMaxLength').value),
-                voice_id: document.getElementById('voiceSelect').value
+                recording_start_delay: recordingStartDelay,
+                recording_end_before_end: recordingEndBeforeEnd,
+                text_file: textFile,
+                output_dir: outputDir,
+                filename_max_length: filenameMaxLength,
+                voice_id: voiceSelect.value
             };
 
+            const status = document.getElementById('configSaveStatus');
+            const saveButton = document.getElementById('configSaveBtn');
+            const reloadButton = document.getElementById('configReloadBtn');
+            status.textContent = '正在保存配置...';
+            saveButton.disabled = true;
+            reloadButton.disabled = true;
             try {
                 await window.go.main.App.SaveConfig(cfg);
-                alert('配置已保存');
+                textFileInput.value = textFile;
+                outputDirInput.value = outputDir;
+                status.textContent = '配置已保存';
                 updateAudioStructure();
+                await loadTextList();
             } catch (e) {
+                status.textContent = '配置保存失败';
                 alert('保存失败: ' + e);
+            } finally {
+                saveButton.disabled = false;
+                reloadButton.disabled = false;
             }
         }
 
