@@ -69,6 +69,8 @@ type App struct {
 	manualRecordSerial    string
 	manualRecordStartedAt time.Time
 	cmdMu                 sync.Mutex // 保护 generateCmd 和 playCmd 的互斥锁
+	updateMu              sync.Mutex
+	downloadedUpdatePath  string
 }
 
 // NewApp 创建新的 App 实例
@@ -809,6 +811,7 @@ func copyUpdateBodyWithProgress(dst io.Writer, src io.ReadCloser, idleTimeout ti
 }
 
 func (a *App) DownloadUpdate(updateURL, expectedSHA256 string) UpdateDownloadResult {
+	a.setDownloadedUpdatePath("")
 	updateURL = strings.TrimSpace(updateURL)
 	if updateURL == "" {
 		return UpdateDownloadResult{Success: false, Message: "更新包 URL 为空"}
@@ -890,11 +893,12 @@ func (a *App) DownloadUpdate(updateURL, expectedSHA256 string) UpdateDownloadRes
 		_ = os.Remove(tmpPath)
 		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("SHA256 校验失败: 期望 %s，实际 %s", expectedSHA256, actualSHA256), Dir: updateDir, Size: size, SHA256: actualSHA256}
 	}
-	if err := os.Rename(tmpPath, targetPath); err != nil {
+	if err := replaceUpdateArchive(tmpPath, targetPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("保存更新包失败: %v", err), Dir: updateDir, Size: size, SHA256: actualSHA256}
 	}
 
+	a.setDownloadedUpdatePath(targetPath)
 	return UpdateDownloadResult{Success: true, Message: "更新包下载完成", FilePath: targetPath, Dir: updateDir, Size: size, SHA256: actualSHA256}
 }
 

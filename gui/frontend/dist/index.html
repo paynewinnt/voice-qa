@@ -1962,7 +1962,7 @@
                 </div>
 
                 <div class="alert alert-info" style="font-size:13px;">
-                    默认从公网云服务器读取版本清单和更新包。更新包会下载到当前程序目录的上一级。
+                    默认从公网云服务器读取版本清单和更新包。下载校验完成后会自动更新并重启程序。
                 </div>
 
                 <div class="form-group">
@@ -1970,7 +1970,7 @@
                     <input type="text" id="updateManifestUrl" value="https://124.223.218.142/voice-qa/latest.json" spellcheck="false">
                     <div id="updatePresetUrls" class="update-source-list"></div>
                     <div class="field-help">
-                        下载完成后关闭旧程序，解压新包并运行新版本；程序不会覆盖正在运行的版本。
+                        更新会覆盖程序文件，并保留 output、config.json、text.txt 及其他用户文件；安装失败时自动回滚。
                     </div>
                 </div>
 
@@ -1989,7 +1989,7 @@
                 <div class="btn-group">
                     <button class="btn btn-primary" id="checkUpdateBtn" onclick="checkUpdate()">检查更新</button>
                     <button class="btn btn-success" id="downloadUpdateBtn" onclick="downloadUpdate()" disabled>下载更新包</button>
-                    <button class="btn btn-secondary" id="openUpdateDirBtn" onclick="openUpdateDir()" disabled>打开更新目录</button>
+                    <button class="btn btn-secondary" id="openUpdateDirBtn" onclick="openUpdateDir()" disabled>打开下载目录</button>
                 </div>
                 </section>
             </div>
@@ -3906,6 +3906,7 @@
             btn.textContent = '下载中...';
             renderUpdateDownloadProgress();
             status.textContent = '正在下载更新包...';
+            let downloadCompleted = false;
             try {
                 const result = await window.go.main.App.DownloadUpdate(pendingUpdate.url, pendingUpdate.sha256 || '');
                 if (!result.success) {
@@ -3915,22 +3916,35 @@
                     btn.textContent = pendingUpdate.hasUpdate ? '下载更新包' : '重新下载当前版本';
                     return;
                 }
+                downloadCompleted = true;
                 downloadedUpdateDir = result.dir;
                 openBtn.disabled = false;
                 finishUpdateDownloadProgress(true, '更新包下载完成 · ' + formatUpdateBytes(result.size));
-                btn.textContent = '下载完成';
-                status.textContent = [
+                btn.textContent = '正在安装并重启...';
+                const downloadLines = [
                     result.message,
                     '文件: ' + result.filePath,
                     '大小: ' + formatUpdateBytes(result.size) + ' (' + result.size + ' bytes)',
                     'SHA256: ' + result.sha256,
-                    '请关闭旧程序后解压更新包，新版本目录会与旧版本目录同级。'
-                ].join('\n');
+                    '正在保留用户数据并替换程序文件，完成后将自动重启。'
+                ];
+                status.textContent = downloadLines.join('\n');
+
+                const installResult = await window.go.main.App.InstallUpdateAndRestart(result.filePath);
+                if (!installResult.success) {
+                    status.textContent = downloadLines.concat('自动安装失败: ' + installResult.message).join('\n');
+                    finishUpdateDownloadProgress(false, '下载完成，但自动安装启动失败');
+                    btn.disabled = false;
+                    btn.textContent = pendingUpdate.hasUpdate ? '重新下载更新包' : '重新下载当前版本';
+                    return;
+                }
+                status.textContent = downloadLines.concat(installResult.message).join('\n');
             } catch (e) {
-                status.textContent = '下载更新包失败: ' + e;
-                finishUpdateDownloadProgress(false, '下载失败: ' + e);
+                const phase = downloadCompleted ? '自动安装失败: ' : '下载更新包失败: ';
+                status.textContent = phase + e;
+                finishUpdateDownloadProgress(false, downloadCompleted ? '下载完成，但自动安装启动失败' : '下载失败: ' + e);
                 btn.disabled = false;
-                btn.textContent = pendingUpdate.hasUpdate ? '下载更新包' : '重新下载当前版本';
+                btn.textContent = pendingUpdate.hasUpdate ? '重新下载更新包' : '重新下载当前版本';
             }
         }
 
@@ -3942,7 +3956,7 @@
             try {
                 await window.go.main.App.OpenDirectory(downloadedUpdateDir);
             } catch (e) {
-                alert('打开更新目录失败: ' + e);
+                alert('打开下载目录失败: ' + e);
             }
         }
 

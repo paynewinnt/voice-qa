@@ -96,6 +96,12 @@ EOF
     echo "  -> $DIST_DIR/latest.json"
 }
 
+create_zip_archive() {
+    local source_dir="$1"
+    local archive_path="$2"
+    go run ./tools/zipdir -source "$source_dir" -output "$archive_path"
+}
+
 # 构建 Linux amd64
 build_linux() {
     echo "构建 Linux amd64..."
@@ -515,7 +521,7 @@ EOF
 EOF
 
     # 打包
-    (cd "$DIST_DIR" && zip -rq "${APP_NAME}-windows-amd64-v${VERSION}.zip" "${APP_NAME}-windows-amd64")
+    create_zip_archive "$OUTPUT_DIR" "$DIST_DIR/${APP_NAME}-windows-amd64-v${VERSION}.zip"
     echo "  -> $DIST_DIR/${APP_NAME}-windows-amd64-v${VERSION}.zip"
 }
 
@@ -613,7 +619,7 @@ EOF
 
     # 打包并生成公网服务器更新清单
     local ARCHIVE_PATH="$DIST_DIR/${PACKAGE_NAME}.zip"
-    (cd "$DIST_DIR" && zip -rq "${PACKAGE_NAME}.zip" "$PACKAGE_NAME")
+    create_zip_archive "$OUTPUT_DIR" "$ARCHIVE_PATH"
     echo "  -> $ARCHIVE_PATH"
     write_update_manifest "$ARCHIVE_PATH"
 }
