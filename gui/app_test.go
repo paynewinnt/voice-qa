@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"voice-qa/internal/config"
 )
@@ -136,24 +140,100 @@ func TestTruncateInvalidLimitUsesDefault(t *testing.T) {
 	}
 }
 
-func TestDefaultUpdateURLUsesPublicGithubRelease(t *testing.T) {
+func TestDefaultUpdateURLUsesPublicCloudServer(t *testing.T) {
 	parsed, err := url.Parse(defaultUpdateURL)
 	if err != nil {
 		t.Fatalf("url.Parse(defaultUpdateURL) error = %v", err)
 	}
-	if parsed.Scheme != "https" || parsed.Host != "github.com" {
-		t.Fatalf("defaultUpdateURL = %q, want public GitHub HTTPS URL", defaultUpdateURL)
+	if parsed.Scheme != "https" || parsed.Host != "124.223.218.142" {
+		t.Fatalf("defaultUpdateURL = %q, want public cloud HTTPS URL", defaultUpdateURL)
 	}
-	if !strings.HasSuffix(parsed.Path, "/releases/latest/download/latest.json") {
-		t.Fatalf("defaultUpdateURL path = %q, want latest release manifest", parsed.Path)
+	if parsed.Path != "/voice-qa/latest.json" {
+		t.Fatalf("defaultUpdateURL path = %q, want cloud update manifest", parsed.Path)
 	}
 
 	sources := NewApp().GetUpdateSources()
-	if len(sources) != 2 {
-		t.Fatalf("GetUpdateSources() count = %d, want 2", len(sources))
+	if len(sources) != 1 {
+		t.Fatalf("GetUpdateSources() count = %d, want 1", len(sources))
 	}
-	if sources[0].URL != defaultUpdateURL || sources[1].URL != lanUpdateURL {
-		t.Fatalf("GetUpdateSources() = %+v, want public default and LAN fallback", sources)
+	if sources[0].URL != defaultUpdateURL || sources[0].Label != "公网云服务器" {
+		t.Fatalf("GetUpdateSources() = %+v, want public cloud source", sources)
+	}
+}
+
+func TestNewUpdateDownloadClientHasNoWholeDownloadTimeout(t *testing.T) {
+	client := newUpdateDownloadClient()
+	defer client.CloseIdleConnections()
+	if client.Timeout != 0 {
+		t.Fatalf("client.Timeout = %v, want no whole-download timeout", client.Timeout)
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("client.Transport = %T, want *http.Transport", client.Transport)
+	}
+	if transport.ResponseHeaderTimeout != updateHeaderTimeout {
+		t.Fatalf("ResponseHeaderTimeout = %v, want %v", transport.ResponseHeaderTimeout, updateHeaderTimeout)
+	}
+	if transport.ForceAttemptHTTP2 {
+		t.Fatal("ForceAttemptHTTP2 = true, want HTTP/1.1-compatible update downloads")
+	}
+}
+
+func TestCopyUpdateBodyAllowsActiveDownloadPastIdleWindow(t *testing.T) {
+	reader, writer := io.Pipe()
+	go func() {
+		defer writer.Close()
+		for i := 0; i < 15; i++ {
+			time.Sleep(25 * time.Millisecond)
+			if _, err := writer.Write([]byte("x")); err != nil {
+				return
+			}
+		}
+	}()
+
+	var output bytes.Buffer
+	size, err := copyUpdateBody(&output, reader, 250*time.Millisecond)
+	if err != nil {
+		t.Fatalf("copyUpdateBody() error = %v", err)
+	}
+	if size != 15 || output.String() != strings.Repeat("x", 15) {
+		t.Fatalf("copyUpdateBody() size/output = %d/%q, want 15 bytes", size, output.String())
+	}
+}
+
+func TestCopyUpdateBodyReportsProgress(t *testing.T) {
+	reader := io.NopCloser(strings.NewReader(strings.Repeat("x", 128*1024)))
+	var reported []int64
+	size, err := copyUpdateBodyWithProgress(io.Discard, reader, time.Second, func(downloaded int64) {
+		reported = append(reported, downloaded)
+	})
+	if err != nil {
+		t.Fatalf("copyUpdateBodyWithProgress() error = %v", err)
+	}
+	if len(reported) == 0 {
+		t.Fatal("copyUpdateBodyWithProgress() did not report progress")
+	}
+	if reported[len(reported)-1] != size {
+		t.Fatalf("last reported progress = %d, want copied size %d", reported[len(reported)-1], size)
+	}
+	for i := 1; i < len(reported); i++ {
+		if reported[i] <= reported[i-1] {
+			t.Fatalf("reported progress is not increasing: %v", reported)
+		}
+	}
+}
+
+func TestCopyUpdateBodyStopsAfterIdleTimeout(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer writer.Close()
+
+	started := time.Now()
+	_, err := copyUpdateBody(io.Discard, reader, 50*time.Millisecond)
+	if !errors.Is(err, errUpdateDownloadIdleTimeout) {
+		t.Fatalf("copyUpdateBody() error = %v, want idle timeout", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("copyUpdateBody() elapsed = %v, want prompt idle cancellation", elapsed)
 	}
 }
 

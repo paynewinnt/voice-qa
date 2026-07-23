@@ -611,7 +611,7 @@ EOF
         cp "$PROJECT_DIR/scripts/README.txt" "$OUTPUT_DIR/"
     fi
 
-    # 打包并生成 GitHub Release 更新清单
+    # 打包并生成公网服务器更新清单
     local ARCHIVE_PATH="$DIST_DIR/${PACKAGE_NAME}.zip"
     (cd "$DIST_DIR" && zip -rq "${PACKAGE_NAME}.zip" "$PACKAGE_NAME")
     echo "  -> $ARCHIVE_PATH"

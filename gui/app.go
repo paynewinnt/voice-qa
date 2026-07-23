@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,16 +35,19 @@ import (
 )
 
 const (
-	defaultModel             = "zh_CN-huayan-medium.onnx"
-	defaultFileNameMaxLength = 30
-	publicUpdateURL          = "https://github.com/paynewinnt/voice-qa/releases/latest/download/latest.json"
-	lanUpdateURL             = "http://172.16.15.15/latest.json"
-	maxUpdateManifestBytes   = 1 << 20
+	defaultModel              = "zh_CN-huayan-medium.onnx"
+	defaultFileNameMaxLength  = 30
+	cloudUpdateURL            = "https://124.223.218.142/voice-qa/latest.json"
+	maxUpdateManifestBytes    = 1 << 20
+	updateConnectTimeout      = 30 * time.Second
+	updateHeaderTimeout       = 2 * time.Minute
+	updateDownloadIdleTimeout = 5 * time.Minute
 )
 
 var (
-	appVersion       = "dev"
-	defaultUpdateURL = publicUpdateURL
+	appVersion                   = "dev"
+	defaultUpdateURL             = cloudUpdateURL
+	errUpdateDownloadIdleTimeout = errors.New("更新包下载长时间无数据")
 )
 
 // App struct
@@ -671,8 +676,7 @@ func (a *App) GetDefaultUpdateURL() string {
 
 func (a *App) GetUpdateSources() []UpdateSource {
 	return []UpdateSource{
-		{Label: "公网 GitHub Release", URL: defaultUpdateURL},
-		{Label: "局域网备用", URL: lanUpdateURL},
+		{Label: "公网云服务器", URL: defaultUpdateURL},
 	}
 }
 
@@ -709,6 +713,101 @@ func (a *App) CheckUpdate(updateJSONURL string) UpdateCheckResult {
 	}
 }
 
+type updateActivityReader struct {
+	reader     io.Reader
+	activity   chan<- struct{}
+	downloaded int64
+	onProgress func(int64)
+}
+
+func (r *updateActivityReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 {
+		r.downloaded += int64(n)
+		if r.onProgress != nil {
+			r.onProgress(r.downloaded)
+		}
+		select {
+		case r.activity <- struct{}{}:
+		default:
+		}
+	}
+	return n, err
+}
+
+func newUpdateDownloadClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   updateConnectTimeout,
+		KeepAlive: 30 * time.Second,
+	}
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           dialer.DialContext,
+			ForceAttemptHTTP2:     false,
+			MaxIdleConns:          10,
+			MaxIdleConnsPerHost:   2,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   updateConnectTimeout,
+			ResponseHeaderTimeout: updateHeaderTimeout,
+			ExpectContinueTimeout: time.Second,
+		},
+	}
+}
+
+func copyUpdateBody(dst io.Writer, src io.ReadCloser, idleTimeout time.Duration) (int64, error) {
+	return copyUpdateBodyWithProgress(dst, src, idleTimeout, nil)
+}
+
+func copyUpdateBodyWithProgress(dst io.Writer, src io.ReadCloser, idleTimeout time.Duration, onProgress func(int64)) (int64, error) {
+	if idleTimeout <= 0 {
+		return io.Copy(dst, &updateActivityReader{reader: src, onProgress: onProgress})
+	}
+
+	progress := make(chan struct{}, 1)
+	type copyResult struct {
+		size int64
+		err  error
+	}
+	result := make(chan copyResult, 1)
+	go func() {
+		size, err := io.Copy(dst, &updateActivityReader{reader: src, activity: progress, onProgress: onProgress})
+		result <- copyResult{size: size, err: err}
+	}()
+
+	timer := time.NewTimer(idleTimeout)
+	defer timer.Stop()
+	for {
+		select {
+		case res := <-result:
+			return res.size, res.err
+		case <-progress:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(idleTimeout)
+		case <-timer.C:
+			select {
+			case res := <-result:
+				return res.size, res.err
+			default:
+			}
+			select {
+			case <-progress:
+				timer.Reset(idleTimeout)
+				continue
+			default:
+			}
+			_ = src.Close()
+			res := <-result
+			return res.size, fmt.Errorf("%w（连续 %s 未收到数据）", errUpdateDownloadIdleTimeout, idleTimeout)
+		}
+	}
+}
+
 func (a *App) DownloadUpdate(updateURL, expectedSHA256 string) UpdateDownloadResult {
 	updateURL = strings.TrimSpace(updateURL)
 	if updateURL == "" {
@@ -733,8 +832,17 @@ func (a *App) DownloadUpdate(updateURL, expectedSHA256 string) UpdateDownloadRes
 	}
 	targetPath := filepath.Join(updateDir, fileName)
 
-	client := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := client.Get(updateURL)
+	client := newUpdateDownloadClient()
+	defer client.CloseIdleConnections()
+	requestContext := context.Background()
+	if a.ctx != nil {
+		requestContext = a.ctx
+	}
+	req, err := http.NewRequestWithContext(requestContext, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("创建下载请求失败: %v", err), Dir: updateDir}
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("下载失败: %v", err), Dir: updateDir}
 	}
@@ -749,11 +857,27 @@ func (a *App) DownloadUpdate(updateURL, expectedSHA256 string) UpdateDownloadRes
 		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("创建文件失败: %v", err), Dir: updateDir}
 	}
 	hasher := sha256.New()
-	size, copyErr := io.Copy(io.MultiWriter(file, hasher), resp.Body)
+	totalSize := resp.ContentLength
+	a.emitUpdateDownloadProgress(0, totalSize)
+	lastProgressEmit := time.Time{}
+	size, copyErr := copyUpdateBodyWithProgress(io.MultiWriter(file, hasher), resp.Body, updateDownloadIdleTimeout, func(downloaded int64) {
+		now := time.Now()
+		if !lastProgressEmit.IsZero() && now.Sub(lastProgressEmit) < 200*time.Millisecond && (totalSize <= 0 || downloaded < totalSize) {
+			return
+		}
+		lastProgressEmit = now
+		a.emitUpdateDownloadProgress(downloaded, totalSize)
+	})
+	if copyErr == nil && resp.ContentLength >= 0 && size != resp.ContentLength {
+		copyErr = fmt.Errorf("响应数据不完整: 预期 %d 字节，实际 %d 字节", resp.ContentLength, size)
+	}
 	closeErr := file.Close()
 	if copyErr != nil {
 		_ = os.Remove(tmpPath)
-		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("写入文件失败: %v", copyErr), Dir: updateDir}
+		if errors.Is(copyErr, errUpdateDownloadIdleTimeout) {
+			return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("下载超时: %v，请检查网络后重试", copyErr), Dir: updateDir}
+		}
+		return UpdateDownloadResult{Success: false, Message: fmt.Sprintf("下载中断: %v", copyErr), Dir: updateDir}
 	}
 	if closeErr != nil {
 		_ = os.Remove(tmpPath)
@@ -772,6 +896,21 @@ func (a *App) DownloadUpdate(updateURL, expectedSHA256 string) UpdateDownloadRes
 	}
 
 	return UpdateDownloadResult{Success: true, Message: "更新包下载完成", FilePath: targetPath, Dir: updateDir, Size: size, SHA256: actualSHA256}
+}
+
+func (a *App) emitUpdateDownloadProgress(downloaded, total int64) {
+	if a.ctx == nil {
+		return
+	}
+	percent := float64(-1)
+	if total > 0 {
+		percent = math.Min(100, float64(downloaded)*100/float64(total))
+	}
+	runtime.EventsEmit(a.ctx, "update-download-progress", map[string]interface{}{
+		"downloaded": downloaded,
+		"total":      total,
+		"percent":    percent,
+	})
 }
 
 func (a *App) updateDownloadDir() string {

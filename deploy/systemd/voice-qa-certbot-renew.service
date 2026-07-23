@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew Voice QA update server TLS certificate
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/certbot renew --quiet --deploy-hook "/usr/bin/systemctl reload nginx"

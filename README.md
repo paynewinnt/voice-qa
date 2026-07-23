@@ -110,7 +110,7 @@ Windows GUI 打包会在缺少资源时自动下载并缓存到本地 `bin/`、`
 
 打包平台能访问外网时，直接运行构建命令即可，脚本会从官方源补齐缺失文件。
 
-如果官方源访问不稳定，可以把以上 5 个文件上传到一个打包平台可访问的公网地址，例如 GitHub Release、对象存储或公司制品库。目录下文件名保持不变：
+如果官方源访问不稳定，可以把以上 5 个文件上传到一个打包平台可访问的公网地址，例如对象存储、公网文件服务器或公司制品库。目录下文件名保持不变：
 
 ```text
 https://example.com/voice-qa-assets/platform-tools-latest-windows.zip
@@ -343,7 +343,7 @@ GUI 版本基于 Wails 框架开发，提供完整图形界面，包含 6 个功
 | **生成语音** | 文本列表管理，批量 TTS 生成，实时进度（支持中途停止） |
 | **播放模式** | 选择目标设备后执行播放测试，自动采集 logcat / 截图 / 录屏并输出独立会话目录（支持中途停止） |
 | **配置设置** | 语音引擎选择，模板可视化编辑，视频录制参数配置 |
-| **软件更新** | 默认从 GitHub Release 公网源检查版本、下载 zip、校验 SHA256 并打开更新目录，可切换局域网备用源 |
+| **软件更新** | 从公网云服务器检查版本、下载 zip、校验 SHA256 并打开更新目录 |
 
 ```
 tts-gui-windows-amd64/
@@ -370,39 +370,34 @@ ISCC installer/setup.iss
 
 ## Windows GUI 公网更新
 
-Windows GUI 默认从公开的 GitHub Release 检查更新，因此只要电脑能访问公网 GitHub，就不需要连接 `172.16.15.15` 所在局域网。固定版本清单地址为：
+Windows GUI 从独立公网云服务器检查更新。固定版本清单地址为：
 
 ```text
-https://github.com/paynewinnt/voice-qa/releases/latest/download/latest.json
+https://124.223.218.142/voice-qa/latest.json
 ```
 
-执行 `./scripts/build.sh gui` 或 `scripts\build.bat -Target gui` 后，`dist/` 会同时生成 GUI zip 和 `latest.json`。发布前先提交并推送对应源码，再把这两个文件上传到同一个 GitHub Release：
+执行 `./scripts/build.sh gui` 或 `scripts\build.bat -Target gui` 后，`dist/` 会同时生成 GUI zip 和 `latest.json`。发布前先提交并推送对应源码，再部署更新文件：
 
 ```bash
-VERSION=2026.0714.1800
-gh release create "v${VERSION}" \
-  "dist/tts-gui-windows-amd64-v${VERSION}.zip" \
-  "dist/latest.json" \
-  --repo paynewinnt/voice-qa \
-  --title "v${VERSION}" \
-  --notes "Windows GUI v${VERSION}" \
-  --latest
+./scripts/deploy-update.sh
 ```
 
-Release 中必须同时存在以下两个资产：
+服务器使用 Nginx 提供静态下载，并通过 Let’s Encrypt 的短周期 IP 证书启用 HTTPS。可追踪的服务配置位于 `deploy/nginx/` 和 `deploy/systemd/`；续期定时器每天检查两次，证书更新后自动热加载 Nginx。部署脚本默认连接 `root@124.223.218.142`，可通过 `VOICE_QA_UPDATE_HOST` 和 `VOICE_QA_UPDATE_DIR` 覆盖目标。
+
+服务器目录 `/srv/voice-qa/` 中必须同时存在以下两个文件：
 
 ```text
 latest.json
 tts-gui-windows-amd64-v<version>.zip
 ```
 
-`latest.json` 中的 `url` 是 zip 文件名，GUI 会相对于清单地址解析为同一个最新 Release 下的 zip。发布后可在任意公网电脑验证：
+`latest.json` 中的 `url` 是 zip 文件名，GUI 会相对于清单地址解析为同一服务器目录下的 zip。部署脚本会先上传并校验 zip，最后替换 `latest.json`，避免客户端读到尚未上传完成的版本。发布后可在任意公网电脑验证：
 
 ```bash
-curl -fL https://github.com/paynewinnt/voice-qa/releases/latest/download/latest.json
+curl -fL https://124.223.218.142/voice-qa/latest.json
 ```
 
-GUI 只负责下载，不会在运行中覆盖自身。下载完成后需要关闭程序，手动解压 zip；更新包会保存到当前程序目录的上一级，便于新版本目录与旧版本目录同级放置。若部分电脑不能访问 GitHub，可在更新页切换到 `http://172.16.15.15/latest.json`；完整 IIS 部署和排障步骤见 [Windows GUI 局域网备用更新指南](docs/windows-gui-lan-update.md)。
+GUI 只负责下载，不会在运行中覆盖自身。下载完成后需要关闭程序，手动解压 zip；更新包会保存到当前程序目录的上一级，便于新版本目录与旧版本目录同级放置。大文件下载不设置固定总时限，只要持续收到数据就会继续；若连续 5 分钟没有任何下载数据，程序才会中止并提示检查网络。局域网 IIS 仍可作为手动填写的自定义更新源，见 [Windows GUI 局域网更新指南](docs/windows-gui-lan-update.md)。
 
 ## 技术栈
 

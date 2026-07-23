@@ -598,6 +598,60 @@
             transition: width 0.3s;
         }
 
+        .update-download-progress {
+            margin-top: 14px;
+            padding: 12px 14px;
+            border: 1px solid #d9e0ec;
+            border-radius: 6px;
+            background: #f8fafc;
+        }
+
+        .update-download-progress[hidden] {
+            display: none;
+        }
+
+        .update-download-progress-meta {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+            color: #334155;
+            font-size: 12px;
+        }
+
+        .update-download-progress-value {
+            flex: 0 0 auto;
+            color: #1d2a44;
+            font-family: Consolas, Monaco, monospace;
+            font-weight: 600;
+        }
+
+        .update-download-progress .progress-bar {
+            display: block;
+            height: 10px;
+            margin-top: 9px;
+            background: #dce3ed;
+        }
+
+        .update-download-progress .progress-bar-inner {
+            width: 0;
+            background: #16835b;
+        }
+
+        .update-download-progress.indeterminate .progress-bar-inner {
+            width: 34%;
+            animation: update-progress-indeterminate 1.2s ease-in-out infinite;
+        }
+
+        .update-download-progress.failed .progress-bar-inner {
+            background: #c53a3a;
+        }
+
+        @keyframes update-progress-indeterminate {
+            from { transform: translateX(-110%); }
+            to { transform: translateX(300%); }
+        }
+
         .status-text {
             margin-top: 10px;
             font-size: 13px;
@@ -1104,17 +1158,6 @@
         .adb-command-box textarea:focus {
             outline: none;
             border: none;
-        }
-
-        .footer {
-            position: static;
-            width: 100%;
-            max-width: none;
-            margin: 0 auto;
-            padding: 0 4px;
-            text-align: right;
-            font-size: 12px;
-            color: rgba(29, 42, 68, 0.45);
         }
 
         .output-console {
@@ -1919,19 +1962,29 @@
                 </div>
 
                 <div class="alert alert-info" style="font-size:13px;">
-                    默认从 GitHub Release 公网源读取版本清单；局域网文件服务保留为备用。更新包会下载到当前程序目录的上一级。
+                    默认从公网云服务器读取版本清单和更新包。更新包会下载到当前程序目录的上一级。
                 </div>
 
                 <div class="form-group">
                     <label>版本清单地址</label>
-                    <input type="text" id="updateManifestUrl" value="https://github.com/paynewinnt/voice-qa/releases/latest/download/latest.json" spellcheck="false">
+                    <input type="text" id="updateManifestUrl" value="https://124.223.218.142/voice-qa/latest.json" spellcheck="false">
                     <div id="updatePresetUrls" class="update-source-list"></div>
                     <div class="field-help">
-                        公网源需要能访问 GitHub。下载完成后关闭旧程序，解压新包并运行新版本；程序不会覆盖正在运行的版本。
+                        下载完成后关闭旧程序，解压新包并运行新版本；程序不会覆盖正在运行的版本。
                     </div>
                 </div>
 
                 <div class="alert alert-info" id="updateStatus" style="font-size:13px;white-space:pre-wrap;">当前版本: 加载中</div>
+
+                <div class="update-download-progress" id="updateDownloadProgress" hidden>
+                    <div class="update-download-progress-meta">
+                        <span id="updateDownloadProgressLabel">准备下载...</span>
+                        <span class="update-download-progress-value" id="updateDownloadProgressValue">0%</span>
+                    </div>
+                    <div class="progress-bar active" id="updateDownloadProgressTrack" role="progressbar" aria-label="更新包下载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="progress-bar-inner" id="updateDownloadProgressInner"></div>
+                    </div>
+                </div>
 
                 <div class="btn-group">
                     <button class="btn btn-primary" id="checkUpdateBtn" onclick="checkUpdate()">检查更新</button>
@@ -1942,8 +1995,6 @@
             </div>
         </div>
     </div>
-
-    <div class="footer">浙江数字生活-产品研发部</div>
 
     <div class="dialog-overlay" id="appDialog" aria-hidden="true">
         <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogMessage">
@@ -3677,12 +3728,84 @@
             }
         }
 
+        function formatUpdateBytes(value) {
+            const bytes = Math.max(0, Number(value) || 0);
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let amount = bytes;
+            let unitIndex = 0;
+            while (amount >= 1024 && unitIndex < units.length - 1) {
+                amount /= 1024;
+                unitIndex++;
+            }
+            const digits = unitIndex === 0 || amount >= 100 ? 0 : (amount >= 10 ? 1 : 2);
+            return amount.toFixed(digits) + ' ' + units[unitIndex];
+        }
+
+        function resetUpdateDownloadProgress() {
+            const container = document.getElementById('updateDownloadProgress');
+            const track = document.getElementById('updateDownloadProgressTrack');
+            container.hidden = true;
+            container.classList.remove('indeterminate', 'failed');
+            document.getElementById('updateDownloadProgressInner').style.width = '0%';
+            document.getElementById('updateDownloadProgressLabel').textContent = '准备下载...';
+            document.getElementById('updateDownloadProgressValue').textContent = '0%';
+            track.setAttribute('aria-valuenow', '0');
+        }
+
+        function renderUpdateDownloadProgress(data = {}) {
+            const container = document.getElementById('updateDownloadProgress');
+            const track = document.getElementById('updateDownloadProgressTrack');
+            const inner = document.getElementById('updateDownloadProgressInner');
+            const label = document.getElementById('updateDownloadProgressLabel');
+            const value = document.getElementById('updateDownloadProgressValue');
+            const downloaded = Math.max(0, Number(data.downloaded) || 0);
+            const total = Math.max(0, Number(data.total) || 0);
+
+            container.hidden = false;
+            container.classList.remove('failed');
+            if (total > 0) {
+                let percent = Number(data.percent);
+                if (!Number.isFinite(percent) || percent < 0) {
+                    percent = downloaded * 100 / total;
+                }
+                percent = Math.max(0, Math.min(100, percent));
+                container.classList.remove('indeterminate');
+                inner.style.width = percent.toFixed(2) + '%';
+                label.textContent = formatUpdateBytes(downloaded) + ' / ' + formatUpdateBytes(total);
+                value.textContent = percent.toFixed(percent >= 10 ? 0 : 1) + '%';
+                track.setAttribute('aria-valuenow', percent.toFixed(1));
+                return;
+            }
+
+            container.classList.add('indeterminate');
+            inner.style.width = '';
+            label.textContent = downloaded > 0 ? '已下载 ' + formatUpdateBytes(downloaded) : '正在连接下载服务器...';
+            value.textContent = '下载中';
+            track.removeAttribute('aria-valuenow');
+        }
+
+        function finishUpdateDownloadProgress(success, message) {
+            const container = document.getElementById('updateDownloadProgress');
+            const track = document.getElementById('updateDownloadProgressTrack');
+            container.hidden = false;
+            container.classList.remove('indeterminate');
+            container.classList.toggle('failed', !success);
+            document.getElementById('updateDownloadProgressLabel').textContent = message;
+            if (success) {
+                document.getElementById('updateDownloadProgressInner').style.width = '100%';
+                document.getElementById('updateDownloadProgressValue').textContent = '100%';
+                track.setAttribute('aria-valuenow', '100');
+            } else {
+                document.getElementById('updateDownloadProgressValue').textContent = '失败';
+            }
+        }
+
         async function initUpdatePanel() {
             try {
                 const version = await window.go.main.App.GetAppVersion();
                 const defaultUrl = await window.go.main.App.GetDefaultUpdateURL();
-                const fallbackUrl = 'https://github.com/paynewinnt/voice-qa/releases/latest/download/latest.json';
-                let sources = [{ label: '公网 GitHub Release', url: defaultUrl || fallbackUrl }];
+                const fallbackUrl = 'https://124.223.218.142/voice-qa/latest.json';
+                let sources = [{ label: '公网云服务器', url: defaultUrl || fallbackUrl }];
                 if (typeof window.go.main.App.GetUpdateSources === 'function') {
                     const backendSources = await window.go.main.App.GetUpdateSources();
                     if (Array.isArray(backendSources) && backendSources.length > 0) {
@@ -3739,6 +3862,7 @@
             downloadBtn.disabled = true;
             downloadBtn.textContent = '下载更新包';
             pendingUpdate = null;
+            resetUpdateDownloadProgress();
             status.textContent = '正在检查更新...';
             try {
                 const result = await window.go.main.App.CheckUpdate(manifestUrl);
@@ -3779,26 +3903,34 @@
             const openBtn = document.getElementById('openUpdateDirBtn');
             const status = document.getElementById('updateStatus');
             btn.disabled = true;
+            btn.textContent = '下载中...';
+            renderUpdateDownloadProgress();
             status.textContent = '正在下载更新包...';
             try {
                 const result = await window.go.main.App.DownloadUpdate(pendingUpdate.url, pendingUpdate.sha256 || '');
                 if (!result.success) {
                     status.textContent = '下载更新包失败: ' + result.message;
+                    finishUpdateDownloadProgress(false, '下载失败: ' + result.message);
                     btn.disabled = false;
+                    btn.textContent = pendingUpdate.hasUpdate ? '下载更新包' : '重新下载当前版本';
                     return;
                 }
                 downloadedUpdateDir = result.dir;
                 openBtn.disabled = false;
+                finishUpdateDownloadProgress(true, '更新包下载完成 · ' + formatUpdateBytes(result.size));
+                btn.textContent = '下载完成';
                 status.textContent = [
                     result.message,
                     '文件: ' + result.filePath,
-                    '大小: ' + result.size + ' bytes',
+                    '大小: ' + formatUpdateBytes(result.size) + ' (' + result.size + ' bytes)',
                     'SHA256: ' + result.sha256,
                     '请关闭旧程序后解压更新包，新版本目录会与旧版本目录同级。'
                 ].join('\n');
             } catch (e) {
                 status.textContent = '下载更新包失败: ' + e;
+                finishUpdateDownloadProgress(false, '下载失败: ' + e);
                 btn.disabled = false;
+                btn.textContent = pendingUpdate.hasUpdate ? '下载更新包' : '重新下载当前版本';
             }
         }
 
@@ -3965,6 +4097,10 @@
                     stopBtn.style.display = 'none';
                     isPlaying = false;
                 }
+            });
+
+            window.runtime.EventsOn('update-download-progress', (data) => {
+                renderUpdateDownloadProgress(data);
             });
 
             window.runtime.EventsOn('perfetto-timeout', (data) => {
