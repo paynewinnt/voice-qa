@@ -73,6 +73,10 @@
             background: var(--surface-muted);
         }
 
+        .update-badge[hidden] {
+            display: none;
+        }
+
         .card {
             background: transparent;
             border: none;
@@ -1247,7 +1251,7 @@
         <div class="header">
             <div class="header-title">
                 <h1>语音播测工具</h1>
-                <button class="update-badge" type="button" onclick="switchTab('update')">NEW</button>
+                <button id="updateBadge" class="update-badge" type="button" onclick="switchTab('update')" hidden>有新版本</button>
             </div>
         </div>
 
@@ -3800,11 +3804,47 @@
             }
         }
 
+        let updateBadgeCheckId = 0;
+
+        function setUpdateBadge(hasUpdate, latestVersion = '') {
+            const badge = document.getElementById('updateBadge');
+            if (!badge) return;
+
+            const visible = Boolean(hasUpdate);
+            badge.hidden = !visible;
+            if (!visible) {
+                badge.removeAttribute('title');
+                badge.removeAttribute('aria-label');
+                return;
+            }
+
+            const version = String(latestVersion || '').trim();
+            const description = version ? `有新版本 ${version}，打开软件更新` : '有新版本，打开软件更新';
+            badge.textContent = '有新版本';
+            badge.title = description;
+            badge.setAttribute('aria-label', description);
+        }
+
+        async function refreshUpdateBadge(manifestUrl) {
+            const checkId = ++updateBadgeCheckId;
+            setUpdateBadge(false);
+            try {
+                const result = await window.go.main.App.CheckUpdate(manifestUrl);
+                if (checkId !== updateBadgeCheckId) return;
+                setUpdateBadge(Boolean(result && result.success && result.hasUpdate), result?.latestVersion);
+            } catch (_) {
+                if (checkId === updateBadgeCheckId) {
+                    setUpdateBadge(false);
+                }
+            }
+        }
+
         async function initUpdatePanel() {
             try {
                 const version = await window.go.main.App.GetAppVersion();
                 const defaultUrl = await window.go.main.App.GetDefaultUpdateURL();
                 const fallbackUrl = 'https://124.223.218.142/voice-qa/latest.json';
+                const manifestUrl = defaultUrl || fallbackUrl;
                 let sources = [{ label: '公网云服务器', url: defaultUrl || fallbackUrl }];
                 if (typeof window.go.main.App.GetUpdateSources === 'function') {
                     const backendSources = await window.go.main.App.GetUpdateSources();
@@ -3813,9 +3853,13 @@
                     }
                 }
                 renderUpdatePresetUrls(sources);
-                document.getElementById('updateManifestUrl').value = defaultUrl || fallbackUrl;
+                document.getElementById('updateManifestUrl').value = manifestUrl;
                 document.getElementById('updateStatus').textContent = '当前版本: ' + version;
+                if (updateBadgeCheckId === 0) {
+                    refreshUpdateBadge(manifestUrl);
+                }
             } catch (e) {
+                setUpdateBadge(false);
                 document.getElementById('updateStatus').textContent = '当前版本: 获取失败';
             }
         }
@@ -3858,10 +3902,12 @@
             const downloadBtn = document.getElementById('downloadUpdateBtn');
             const status = document.getElementById('updateStatus');
             const manifestUrl = document.getElementById('updateManifestUrl').value.trim();
+            const badgeCheckId = ++updateBadgeCheckId;
             btn.disabled = true;
             downloadBtn.disabled = true;
             downloadBtn.textContent = '下载更新包';
             pendingUpdate = null;
+            setUpdateBadge(false);
             resetUpdateDownloadProgress();
             status.textContent = '正在检查更新...';
             try {
@@ -3869,6 +3915,9 @@
                 if (!result.success) {
                     status.textContent = '检查更新失败: ' + result.message;
                     return;
+                }
+                if (badgeCheckId === updateBadgeCheckId) {
+                    setUpdateBadge(result.hasUpdate, result.latestVersion);
                 }
                 const lines = [
                     '当前版本: ' + result.currentVersion,
