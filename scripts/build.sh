@@ -20,6 +20,8 @@ VERSION="${VERSION:-$(date +%Y.%m%d.%H%M)}"
 APP_NAME="tts"
 SKIP_DOWNLOAD="${SKIP_DOWNLOAD:-0}"
 ASSET_BASE_URL="${VOICE_QA_ASSET_BASE_URL:-}"
+RELEASE_NOTES_FILE="${VOICE_QA_RELEASE_NOTES_FILE:-$PROJECT_DIR/release/release-notes.txt}"
+UPDATE_HISTORY_FILE="${VOICE_QA_UPDATE_HISTORY_FILE:-$PROJECT_DIR/release/update-history.json}"
 
 PIPER_VERSION="2023.11.14-2"
 PIPER_WIN_ARCHIVE="piper_windows_amd64.zip"
@@ -85,14 +87,108 @@ write_update_manifest() {
     archive_name="$(basename "$archive_path")"
     archive_sha256="$(sha256_file "$archive_path")"
 
-    cat > "$DIST_DIR/latest.json" << EOF
-{
-  "version": "${VERSION}",
-  "notes": "Windows GUI v${VERSION}",
-  "url": "${archive_name}",
-  "sha256": "${archive_sha256}"
+    python3 - "$DIST_DIR/latest.json" "$VERSION" "$archive_name" "$archive_sha256" "$RELEASE_NOTES_FILE" "$UPDATE_HISTORY_FILE" <<'PY'
+import calendar
+import datetime as dt
+import json
+import pathlib
+import re
+import sys
+
+output_path, version, archive_name, digest, notes_path, history_path = sys.argv[1:]
+
+
+def version_date(value):
+    match = re.match(r"^(\d{4})\.(\d{2})(\d{2})", str(value or ""))
+    if not match:
+        return None
+    try:
+        return dt.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except ValueError:
+        return None
+
+
+def parse_date(value):
+    try:
+        return dt.date.fromisoformat(str(value or ""))
+    except ValueError:
+        return None
+
+
+def note_items(value):
+    source = value if isinstance(value, list) else str(value or "").splitlines()
+    result = []
+    for item in source:
+        text = re.sub(r"^\s*\d+[.、)]\s*", "", str(item)).strip()
+        if text:
+            result.append(text)
+    return result
+
+
+def normalize_entry(entry):
+    if not isinstance(entry, dict):
+        return None
+    entry_version = str(entry.get("version", "")).strip()
+    notes = note_items(entry.get("notes", []))
+    if not entry_version or not notes:
+        return None
+    entry_date = parse_date(entry.get("date")) or version_date(entry_version)
+    if entry_date is None:
+        return None
+    return {
+        "version": entry_version,
+        "date": entry_date.isoformat(),
+        "notes": notes,
+    }
+
+
+notes_file = pathlib.Path(notes_path)
+notes_text = notes_file.read_text(encoding="utf-8").strip() if notes_file.is_file() else ""
+if not notes_text:
+    notes_text = f"Windows GUI v{version}"
+
+seed_history = []
+history_file = pathlib.Path(history_path)
+if history_file.is_file():
+    seed_history = json.loads(history_file.read_text(encoding="utf-8"))
+    if isinstance(seed_history, dict):
+        seed_history = seed_history.get("history", [])
+    if not isinstance(seed_history, list):
+        raise SystemExit("更新历史文件必须是 JSON 数组")
+
+release_date = version_date(version) or dt.date.today()
+previous_year_day = min(release_date.day, calendar.monthrange(release_date.year - 1, release_date.month)[1])
+cutoff = release_date.replace(year=release_date.year - 1, day=previous_year_day)
+current_entry = {
+    "version": version,
+    "date": release_date.isoformat(),
+    "notes": note_items(notes_text),
 }
-EOF
+
+history = []
+seen = set()
+for raw_entry in [current_entry, *seed_history]:
+    entry = normalize_entry(raw_entry)
+    if entry is None or entry["version"] in seen:
+        continue
+    if parse_date(entry["date"]) < cutoff:
+        continue
+    seen.add(entry["version"])
+    history.append(entry)
+history.sort(key=lambda item: (item["date"], item["version"]), reverse=True)
+
+manifest = {
+    "version": version,
+    "notes": notes_text,
+    "url": archive_name,
+    "sha256": digest,
+    "history": history,
+}
+pathlib.Path(output_path).write_text(
+    json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+    encoding="utf-8",
+)
+PY
     echo "  -> $DIST_DIR/latest.json"
 }
 

@@ -90,7 +90,7 @@ scripts\build.bat -Target gui
 构建产物在 `dist/` 目录，版本号格式为 `YYYY.MMDD.HHMM`：
 - `tts-linux-amd64-v2025.1222.1723.tar.gz`
 - `tts-gui-windows-amd64-v2025.1222.1723.zip`
-- `latest.json`（Windows GUI 更新清单，包含版本、zip 文件名和 SHA256）
+- `latest.json`（Windows GUI 更新清单，包含版本、详细说明、最近一年变更记录、zip 文件名和 SHA256）
 
 > 注意：`gui/frontend/dist/index.html` 虽然位于 `dist` 目录下，但它是 Wails 通过 `go:embed all:frontend/dist` 嵌入的 GUI 页面。当前仓库没有独立前端源码，因此该文件必须纳入版本控制；否则其它电脑克隆后无法复现 Windows GUI 构建。
 
@@ -382,6 +382,8 @@ https://124.223.218.142/voice-qa/latest.json
 ./scripts/deploy-update.sh
 ```
 
+本次版本的详细说明维护在 `release/release-notes.txt`，已发布版本的初始历史维护在 `release/update-history.json`。构建脚本会将本次版本加入 `latest.json.history`，按版本去重并只保留最近一年；部署脚本还会合并服务器现有清单中的记录，避免连续发布时丢失历史。
+
 服务器使用 Nginx 提供静态下载，并通过 Let’s Encrypt 的短周期 IP 证书启用 HTTPS。可追踪的服务配置位于 `deploy/nginx/` 和 `deploy/systemd/`；续期定时器每天检查两次，证书更新后自动热加载 Nginx。部署脚本默认连接 `root@124.223.218.142`，可通过 `VOICE_QA_UPDATE_HOST` 和 `VOICE_QA_UPDATE_DIR` 覆盖目标。
 
 服务器目录 `/srv/voice-qa/` 中必须同时存在以下两个文件：
@@ -391,7 +393,7 @@ latest.json
 tts-gui-windows-amd64-v<version>.zip
 ```
 
-`latest.json` 中的 `url` 是 zip 文件名，GUI 会相对于清单地址解析为同一服务器目录下的 zip。部署脚本会先上传并校验 zip，最后替换 `latest.json`，避免客户端读到尚未上传完成的版本。发布后可在任意公网电脑验证：
+`latest.json` 中的 `url` 是当前 zip 文件名，GUI 会相对于清单地址解析为同一服务器目录下的 zip。`history` 仅包含版本、日期和变更说明，不包含旧安装包地址；GUI 的“历史变更”按钮用于查看这些记录，不提供历史版本下载。部署脚本会先上传并校验新 zip，再替换 `latest.json`，最后删除服务器目录中的其他 zip，因此云服务器始终只保留最新安装包，同时避免客户端读到尚未上传完成的版本。发布后可在任意公网电脑验证：
 
 ```bash
 curl -fL https://124.223.218.142/voice-qa/latest.json

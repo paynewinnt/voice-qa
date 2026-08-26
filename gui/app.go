@@ -636,22 +636,30 @@ func (a *App) OpenDirectory(path string) error {
 }
 
 type UpdateInfo struct {
-	Version string `json:"version"`
-	Notes   string `json:"notes"`
-	URL     string `json:"url"`
-	SHA256  string `json:"sha256"`
+	Version string               `json:"version"`
+	Notes   string               `json:"notes"`
+	URL     string               `json:"url"`
+	SHA256  string               `json:"sha256"`
+	History []UpdateHistoryEntry `json:"history"`
+}
+
+type UpdateHistoryEntry struct {
+	Version string   `json:"version"`
+	Date    string   `json:"date"`
+	Notes   []string `json:"notes"`
 }
 
 type UpdateCheckResult struct {
-	Success        bool   `json:"success"`
-	Message        string `json:"message"`
-	CurrentVersion string `json:"currentVersion"`
-	LatestVersion  string `json:"latestVersion"`
-	HasUpdate      bool   `json:"hasUpdate"`
-	Notes          string `json:"notes"`
-	URL            string `json:"url"`
-	SHA256         string `json:"sha256"`
-	UpdateJSONURL  string `json:"updateJsonUrl"`
+	Success        bool                 `json:"success"`
+	Message        string               `json:"message"`
+	CurrentVersion string               `json:"currentVersion"`
+	LatestVersion  string               `json:"latestVersion"`
+	HasUpdate      bool                 `json:"hasUpdate"`
+	Notes          string               `json:"notes"`
+	URL            string               `json:"url"`
+	SHA256         string               `json:"sha256"`
+	UpdateJSONURL  string               `json:"updateJsonUrl"`
+	History        []UpdateHistoryEntry `json:"history"`
 }
 
 type UpdateDownloadResult struct {
@@ -712,6 +720,7 @@ func (a *App) CheckUpdate(updateJSONURL string) UpdateCheckResult {
 		URL:            downloadURL,
 		SHA256:         strings.ToLower(strings.TrimSpace(info.SHA256)),
 		UpdateJSONURL:  updateJSONURL,
+		History:        info.History,
 	}
 }
 
@@ -958,6 +967,8 @@ func fetchUpdateInfo(updateJSONURL string) (UpdateInfo, error) {
 	}
 	info.Version = strings.TrimSpace(info.Version)
 	info.URL = strings.TrimSpace(info.URL)
+	info.Notes = strings.TrimSpace(info.Notes)
+	info.History = normalizeUpdateHistory(info.History)
 	if info.Version == "" {
 		return UpdateInfo{}, fmt.Errorf("版本清单缺少 version")
 	}
@@ -965,6 +976,26 @@ func fetchUpdateInfo(updateJSONURL string) (UpdateInfo, error) {
 		return UpdateInfo{}, fmt.Errorf("版本清单缺少 url")
 	}
 	return info, nil
+}
+
+func normalizeUpdateHistory(history []UpdateHistoryEntry) []UpdateHistoryEntry {
+	normalized := make([]UpdateHistoryEntry, 0, len(history))
+	for _, entry := range history {
+		entry.Version = strings.TrimSpace(entry.Version)
+		entry.Date = strings.TrimSpace(entry.Date)
+		notes := make([]string, 0, len(entry.Notes))
+		for _, note := range entry.Notes {
+			if note = strings.TrimSpace(note); note != "" {
+				notes = append(notes, note)
+			}
+		}
+		if entry.Version == "" || len(notes) == 0 {
+			continue
+		}
+		entry.Notes = notes
+		normalized = append(normalized, entry)
+	}
+	return normalized
 }
 
 func resolveUpdateURL(baseURL, updatePath string) (string, error) {
@@ -2983,6 +3014,11 @@ type PerfAggregateReportResult struct {
 	ResultDir  string `json:"resultDir"`
 }
 
+type perfReportMetrics struct {
+	includeTotal  bool
+	includeManual bool
+}
+
 // PerfettoStartResult 启动计时结果。
 type PerfettoStartResult struct {
 	Success      bool                      `json:"success"`
@@ -3540,9 +3576,130 @@ func (a *App) GeneratePerfBatchReport(resultDir string) PerfAggregateReportResul
 		batch.ResultDir = resultDir
 	}
 	fillBatchStats(&batch)
+	return savePerfAggregateReport(batch, resultDir, perfReportMetrics{includeTotal: true, includeManual: true})
+}
+
+// GeneratePerfRecordsReport 根据当前测试记录目录生成聚合报告，兼容手动计时和批量测试记录。
+func (a *App) GeneratePerfRecordsReport(resultDirs []string, includeTotal, includeManual bool) PerfAggregateReportResult {
+	if len(resultDirs) == 0 {
+		return PerfAggregateReportResult{Success: false, Message: "当前测试记录没有可用于生成报告的结果目录"}
+	}
+	if len(resultDirs) > 500 {
+		return PerfAggregateReportResult{Success: false, Message: "单次最多聚合 500 条测试记录"}
+	}
+	if !includeTotal && !includeManual {
+		return PerfAggregateReportResult{Success: false, Message: "请至少选择一个报告统计项"}
+	}
+
+	perfRoot := filepath.Join(a.resolvedOutputDir(), "perf")
+	runs, err := loadPerfRecordMetadata(perfRoot, resultDirs)
+	if err != nil {
+		return PerfAggregateReportResult{Success: false, Message: err.Error()}
+	}
+	if len(runs) == 0 {
+		return PerfAggregateReportResult{Success: false, Message: "没有读取到有效测试记录"}
+	}
+
+	resultDir := filepath.Join(perfRoot, "aggregate-"+time.Now().Format("20060102-150405")+"-"+fmt.Sprint(time.Now().UnixNano()))
+	if err := os.MkdirAll(resultDir, 0755); err != nil {
+		return PerfAggregateReportResult{Success: false, Message: fmt.Sprintf("创建聚合结果目录失败: %v", err)}
+	}
+
+	batch := PerfBatchResult{
+		Success:   true,
+		Message:   "测试记录聚合完成",
+		ResultDir: resultDir,
+		Runs:      runs,
+		Count:     len(runs),
+	}
+	for _, run := range runs {
+		if run.Success {
+			batch.Successes++
+		}
+	}
+	batch.Success = batch.Successes == len(runs)
+	if !batch.Success {
+		batch.Message = fmt.Sprintf("测试记录聚合完成，%d/%d 成功", batch.Successes, len(runs))
+	}
+	fillBatchStats(&batch)
+	if err := saveJSON(filepath.Join(resultDir, "summary.json"), batch); err != nil {
+		return PerfAggregateReportResult{Success: false, Message: fmt.Sprintf("写入聚合 summary.json 失败: %v", err), ResultDir: resultDir}
+	}
+
+	return savePerfAggregateReport(batch, resultDir, perfReportMetrics{includeTotal: includeTotal, includeManual: includeManual})
+}
+
+func loadPerfRecordMetadata(perfRoot string, resultDirs []string) ([]perfetto.LaunchResult, error) {
+	rootAbs, err := filepath.Abs(perfRoot)
+	if err != nil {
+		return nil, fmt.Errorf("解析启动性能输出目录失败: %v", err)
+	}
+
+	runs := make([]perfetto.LaunchResult, 0, len(resultDirs))
+	seen := make(map[string]struct{}, len(resultDirs))
+	for index, resultDir := range resultDirs {
+		resultDir = strings.TrimSpace(resultDir)
+		if resultDir == "" {
+			return nil, fmt.Errorf("第 %d 条测试记录缺少结果目录", index+1)
+		}
+		dirAbs, err := filepath.Abs(resultDir)
+		if err != nil {
+			return nil, fmt.Errorf("解析第 %d 条测试记录目录失败: %v", index+1, err)
+		}
+		if !pathWithinRoot(rootAbs, dirAbs) {
+			return nil, fmt.Errorf("第 %d 条测试记录不在启动性能输出目录内", index+1)
+		}
+
+		key := filepath.Clean(dirAbs)
+		if goruntime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		metadataPath := filepath.Join(dirAbs, "metadata.json")
+		data, err := os.ReadFile(metadataPath)
+		if err != nil {
+			return nil, fmt.Errorf("读取第 %d 条测试记录 metadata.json 失败: %v", index+1, err)
+		}
+		var run perfetto.LaunchResult
+		if err := json.Unmarshal(data, &run); err != nil {
+			return nil, fmt.Errorf("解析第 %d 条测试记录 metadata.json 失败: %v", index+1, err)
+		}
+		run.ResultDir = dirAbs
+		if run.ManualDurationMS <= 0 {
+			run.ManualDurationMS = durationBetweenPerfTimestamps(run.Timestamp, run.StoppedAt)
+		}
+		runs = append(runs, run)
+	}
+	return runs, nil
+}
+
+func pathWithinRoot(root, candidate string) bool {
+	rel, err := filepath.Rel(root, candidate)
+	if err != nil || filepath.IsAbs(rel) {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func durationBetweenPerfTimestamps(startValue, stopValue string) int64 {
+	const layout = "2006-01-02 15:04:05.000"
+	start, startErr := time.ParseInLocation(layout, strings.TrimSpace(startValue), time.Local)
+	stop, stopErr := time.ParseInLocation(layout, strings.TrimSpace(stopValue), time.Local)
+	if startErr != nil || stopErr != nil || stop.Before(start) {
+		return 0
+	}
+	return stop.Sub(start).Milliseconds()
+}
+
+func savePerfAggregateReport(batch PerfBatchResult, resultDir string, metrics perfReportMetrics) PerfAggregateReportResult {
+	batch.ResultDir = resultDir
 
 	reportPath := filepath.Join(resultDir, "aggregate_report.txt")
-	report := buildPerfAggregateReport(batch, reportPath)
+	report := buildPerfAggregateReport(batch, reportPath, metrics)
 	if err := os.WriteFile(reportPath, []byte(report), 0644); err != nil {
 		return PerfAggregateReportResult{Success: false, Message: fmt.Sprintf("写入聚合报告失败: %v", err), ResultDir: resultDir}
 	}
@@ -3555,7 +3712,7 @@ func (a *App) GeneratePerfBatchReport(resultDir string) PerfAggregateReportResul
 	}
 }
 
-func buildPerfAggregateReport(batch PerfBatchResult, reportPath string) string {
+func buildPerfAggregateReport(batch PerfBatchResult, reportPath string, metrics perfReportMetrics) string {
 	totalRuns := len(batch.Runs)
 	successRuns := batch.Successes
 	if successRuns == 0 {
@@ -3571,23 +3728,36 @@ func buildPerfAggregateReport(batch PerfBatchResult, reportPath string) string {
 		successRate = float64(successRuns) * 100 / float64(totalRuns)
 	}
 
-	totalValues := collectPositiveTotals(batch.Runs)
-	waitValues := collectPositiveWaits(batch.Runs)
-	manualValues := collectManualDurations(batch.Runs)
+	var totalValues []int
+	var waitValues []int
+	var manualValues []int64
+	if metrics.includeTotal {
+		totalValues = collectPositiveTotals(batch.Runs)
+		waitValues = collectPositiveWaits(batch.Runs)
+	}
+	if metrics.includeManual {
+		manualValues = collectManualDurations(batch.Runs)
+	}
 	sort.Ints(totalValues)
 	sort.Ints(waitValues)
 	sort.Slice(manualValues, func(i, j int) bool { return manualValues[i] < manualValues[j] })
 
 	meanTotal := meanInts(totalValues)
 	stdTotal := stddevInts(totalValues, meanTotal)
-	cv := 0.0
+	meanManual := meanInt64s(manualValues)
+	stdManual := stddevInt64s(manualValues, meanManual)
+	totalCV := 0.0
 	if meanTotal > 0 {
-		cv = stdTotal * 100 / meanTotal
+		totalCV = stdTotal * 100 / meanTotal
+	}
+	manualCV := 0.0
+	if meanManual > 0 {
+		manualCV = stdManual * 100 / meanManual
 	}
 
 	firstRun := batch.Runs[0]
 	var b strings.Builder
-	fmt.Fprintf(&b, "启动性能批量测试聚合报告\n")
+	fmt.Fprintf(&b, "启动性能测试聚合报告\n")
 	fmt.Fprintf(&b, "============================================================\n\n")
 	fmt.Fprintf(&b, "报告文件: %s\n", reportPath)
 	fmt.Fprintf(&b, "生成时间: %s\n", time.Now().Format("2006-01-02 15:04:05"))
@@ -3596,16 +3766,37 @@ func buildPerfAggregateReport(batch PerfBatchResult, reportPath string) string {
 	fmt.Fprintf(&b, "一、测试结论\n")
 	fmt.Fprintf(&b, "------------------------------------------------------------\n")
 	if successRuns == totalRuns {
-		fmt.Fprintf(&b, "结论: 本次 %d 次启动全部成功，可以使用 TotalTime 作为本次冷启动耗时的主要结论。\n", totalRuns)
-		fmt.Fprintf(&b, "平均启动耗时约 %.0f ms，最快 %d ms，最慢 %d ms。\n", meanTotal, minInt(totalValues), maxInt(totalValues))
-		if len(totalValues) >= 2 {
-			fmt.Fprintf(&b, "稳定性: 标准方差 %.0f ms，波动系数 %.1f%%。%s\n", stdTotal, cv, stabilityText(cv))
+		switch {
+		case len(manualValues) > 0:
+			fmt.Fprintf(&b, "结论: 本次 %d 次启动全部成功，以手动(ms)作为本次启动耗时的主要结论；手动(ms)表示用户看到页面完全加载好并可以进行下一步操作所需的全部时间。\n", totalRuns)
+			fmt.Fprintf(&b, "平均完整加载耗时约 %.0f ms，P90 约 %.0f ms，最快 %d ms，最慢 %d ms。\n", meanManual, percentileInt64(manualValues, 90), manualValues[0], manualValues[len(manualValues)-1])
+			if len(manualValues) >= 2 {
+				fmt.Fprintf(&b, "稳定性: 标准差 %.0f ms，波动系数 %.1f%%。%s\n", stdManual, manualCV, stabilityText(manualCV))
+			}
+			if len(totalValues) > 0 {
+				fmt.Fprintf(&b, "TotalTime/WaitTime 作为 Activity 启动到首帧阶段的辅助指标，不替代手动(ms)的完整加载结论。\n")
+			}
+		case len(totalValues) > 0:
+			fmt.Fprintf(&b, "结论: 本次 %d 次启动全部成功，可以使用 TotalTime 作为本次启动耗时的主要结论。\n", totalRuns)
+			fmt.Fprintf(&b, "平均启动耗时约 %.0f ms，最快 %d ms，最慢 %d ms。\n", meanTotal, minInt(totalValues), maxInt(totalValues))
+			if len(totalValues) >= 2 {
+				fmt.Fprintf(&b, "稳定性: 标准差 %.0f ms，波动系数 %.1f%%。%s\n", stdTotal, totalCV, stabilityText(totalCV))
+			}
+		default:
+			fmt.Fprintf(&b, "结论: 本次 %d 次测试均已完成，但没有可用于计算耗时的有效数据。\n", totalRuns)
 		}
 	} else if successRuns > 0 {
 		fmt.Fprintf(&b, "结论: 本次 %d 次测试中 %d 次成功、%d 次失败，成功率 %.1f%%。启动链路存在不稳定或参数/环境问题，建议先处理失败轮次再比较性能。\n", totalRuns, successRuns, failedRuns, successRate)
-		fmt.Fprintf(&b, "成功轮次的平均启动耗时约 %.0f ms，最快 %d ms，最慢 %d ms。\n", meanTotal, minInt(totalValues), maxInt(totalValues))
+		if len(manualValues) > 0 {
+			fmt.Fprintf(&b, "本次耗时结论以有效手动(ms)数据为主，平均完整加载耗时约 %.0f ms，P90 约 %.0f ms。\n", meanManual, percentileInt64(manualValues, 90))
+			if len(totalValues) > 0 {
+				fmt.Fprintf(&b, "有效 TotalTime/WaitTime 仅作为 Activity 启动到首帧阶段的辅助指标。\n")
+			}
+		} else if len(totalValues) > 0 {
+			fmt.Fprintf(&b, "有效 TotalTime 的平均启动耗时约 %.0f ms，最快 %d ms，最慢 %d ms。\n", meanTotal, minInt(totalValues), maxInt(totalValues))
+		}
 	} else {
-		fmt.Fprintf(&b, "结论: 本次 %d 次启动全部失败，无法得出有效启动耗时结论。需要先解决启动失败原因，再重新跑批量测试。\n", totalRuns)
+		fmt.Fprintf(&b, "结论: 本次 %d 次启动全部失败，无法得出有效启动耗时结论。需要先解决启动失败原因，再重新测试。\n", totalRuns)
 	}
 	if failedRuns > 0 {
 		fmt.Fprintf(&b, "主要失败信息: %s\n", topFailureMessage(batch.Runs))
@@ -3618,28 +3809,42 @@ func buildPerfAggregateReport(batch PerfBatchResult, reportPath string) string {
 	fmt.Fprintf(&b, "应用包名: %s\n", emptyAsDash(firstRun.PackageName))
 	fmt.Fprintf(&b, "启动 Component: %s\n", emptyAsDash(firstRun.Component))
 	fmt.Fprintf(&b, "测试轮数: %d\n", totalRuns)
-	fmt.Fprintf(&b, "测试方式: 每一轮先按配置执行 force-stop / pm clear，然后采集 logcat，再执行 am start -W -n <Component> 启动目标 Activity。\n")
+	fmt.Fprintf(&b, "测试方式: %s\n", perfReportTestMethod(batch.Runs))
 	fmt.Fprintf(&b, "数据来源: Android am start -W 输出、logcat 时间线、可选 Perfetto trace。\n")
-	fmt.Fprintf(&b, "注意: TotalTime/WaitTime 主要衡量 Activity 启动到首帧相关耗时，不等于用户看到页面完全加载好所需的全部时间。\n\n")
+	fmt.Fprintf(&b, "注意: TotalTime/WaitTime 主要衡量 Activity 启动到首帧相关耗时，不等于用户看到页面完全加载好所需的全部时间。\n")
+	fmt.Fprintf(&b, "手动(ms)表示用户看到页面完全加载好并可以进行下一步操作所需的全部时间。\n")
+	if metrics.includeTotal && metrics.includeManual {
+		fmt.Fprintf(&b, "同时选择两类指标时，报告以手动(ms)作为本次启动耗时的主要结论，TotalTime/WaitTime 作为首帧阶段的辅助指标。\n")
+	}
+	fmt.Fprintf(&b, "\n")
 
 	fmt.Fprintf(&b, "三、核心数据汇总\n")
 	fmt.Fprintf(&b, "------------------------------------------------------------\n")
 	fmt.Fprintf(&b, "成功次数: %d/%d (%.1f%%)\n", successRuns, totalRuns, successRate)
-	if len(totalValues) > 0 {
+	if metrics.includeManual {
+		if len(manualValues) > 0 {
+			fmt.Fprintf(&b, "手动(ms)平均值: %.2f ms\n", meanManual)
+			fmt.Fprintf(&b, "手动(ms)中位数: %.0f ms\n", percentileInt64(manualValues, 50))
+			fmt.Fprintf(&b, "手动(ms) P90: %.0f ms\n", percentileInt64(manualValues, 90))
+			fmt.Fprintf(&b, "手动(ms)最小/最大: %d / %d ms\n", manualValues[0], manualValues[len(manualValues)-1])
+			fmt.Fprintf(&b, "手动(ms)标准差: %.2f ms\n", stdManual)
+			fmt.Fprintf(&b, "手动(ms)波动系数: %.1f%%\n", manualCV)
+		} else {
+			fmt.Fprintf(&b, "手动(ms): 无有效数据，请确认每轮均通过“执行停止计时”结束并保存记录。\n")
+		}
+	}
+	if metrics.includeTotal && len(totalValues) > 0 {
 		fmt.Fprintf(&b, "TotalTime 平均值: %.2f ms\n", meanTotal)
 		fmt.Fprintf(&b, "TotalTime 中位数: %.0f ms\n", percentileInt(totalValues, 50))
 		fmt.Fprintf(&b, "TotalTime P90: %.0f ms\n", percentileInt(totalValues, 90))
 		fmt.Fprintf(&b, "TotalTime 最小/最大: %d / %d ms\n", minInt(totalValues), maxInt(totalValues))
-		fmt.Fprintf(&b, "TotalTime 标准方差: %.2f ms\n", stdTotal)
-		fmt.Fprintf(&b, "TotalTime 波动系数: %.1f%%\n", cv)
-	} else {
+		fmt.Fprintf(&b, "TotalTime 标准差: %.2f ms\n", stdTotal)
+		fmt.Fprintf(&b, "TotalTime 波动系数: %.1f%%\n", totalCV)
+	} else if metrics.includeTotal {
 		fmt.Fprintf(&b, "TotalTime: 无有效数据，通常表示启动命令失败或 am start 未返回计时结果。\n")
 	}
-	if len(waitValues) > 0 {
+	if metrics.includeTotal && len(waitValues) > 0 {
 		fmt.Fprintf(&b, "WaitTime 平均值: %.2f ms，P90: %.0f ms\n", meanInts(waitValues), percentileInt(waitValues, 90))
-	}
-	if len(manualValues) > 0 {
-		fmt.Fprintf(&b, "人工计时/采集窗口平均耗时: %.2f ms\n", meanInt64s(manualValues))
 	}
 	fmt.Fprintf(&b, "\n")
 
@@ -3707,10 +3912,10 @@ func buildPerfAggregateReport(batch PerfBatchResult, reportPath string) string {
 	fmt.Fprintf(&b, "TotalTime: Android am start -W 返回的总启动耗时，通常用来衡量 Activity 冷启动到首帧相关阶段的耗时。\n")
 	fmt.Fprintf(&b, "WaitTime: am start 命令等待启动完成的时间，一般接近 TotalTime，但受系统调度影响可能不同。\n")
 	fmt.Fprintf(&b, "ThisTime: 当前 Activity 自身启动耗时；如果启动过程中跳转了多个 Activity，它可能小于 TotalTime。\n")
-	fmt.Fprintf(&b, "手动耗时: 工具从本轮开始到采集结束的墙钟时间，包含启动后继续采集 logcat/trace 的时间，不等同于启动性能。\n")
+	fmt.Fprintf(&b, "手动(ms): 表示用户看到页面完全加载好并可以进行下一步操作所需的全部时间；应在达到该状态时执行停止计时。\n")
 	fmt.Fprintf(&b, "P90: 90%% 分位值。可理解为 10 次里大约 9 次不会超过这个耗时，比平均值更能反映偶发慢启动。\n")
-	fmt.Fprintf(&b, "标准方差: 数据波动大小。越小表示多次启动越稳定。\n")
-	fmt.Fprintf(&b, "波动系数: 标准方差 / 平均值。用于判断稳定性，通常低于 10%% 较稳定，10%%-20%% 有波动，高于 20%% 需要关注。\n")
+	fmt.Fprintf(&b, "标准差: 数据波动大小。越小表示多次启动越稳定。\n")
+	fmt.Fprintf(&b, "波动系数: 标准差 / 平均值。用于判断稳定性，通常低于 10%% 较稳定，10%%-20%% 有波动，高于 20%% 需要关注。\n")
 	fmt.Fprintf(&b, "logcat: Android 系统日志，可用于还原启动过程中的关键事件和错误。\n")
 	fmt.Fprintf(&b, "Perfetto trace: Android 性能追踪文件，可用于更深入分析线程、CPU、调度等问题；未启用 Perfetto 时不会生成。\n")
 	return b.String()
@@ -3768,6 +3973,35 @@ func meanInt64s(values []int64) float64 {
 	return float64(sum) / float64(len(values))
 }
 
+func stddevInt64s(values []int64, mean float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	var variance float64
+	for _, value := range values {
+		diff := float64(value) - mean
+		variance += diff * diff
+	}
+	return sqrt(variance / float64(len(values)))
+}
+
+func perfReportTestMethod(runs []perfetto.LaunchResult) string {
+	batchRuns := 0
+	for _, run := range runs {
+		if strings.EqualFold(strings.TrimSpace(run.StopReason), "batch") {
+			batchRuns++
+		}
+	}
+	switch {
+	case batchRuns == len(runs):
+		return "每一轮先按配置执行 force-stop / pm clear，然后采集 logcat，再执行 am start -W -n <Component> 启动目标 Activity。"
+	case batchRuns == 0:
+		return "通过“执行启动计时”开始测试并启动目标 Activity，再由“执行停止计时”或采集超时结束本轮测试。"
+	default:
+		return "当前报告包含手动启动计时和批量启动测试记录，各轮均采集 am start -W 输出及相应日志/Trace 产物。"
+	}
+}
+
 func stddevInts(values []int, mean float64) float64 {
 	if len(values) == 0 {
 		return 0
@@ -3781,6 +4015,29 @@ func stddevInts(values []int, mean float64) float64 {
 }
 
 func percentileInt(sortedValues []int, percentile int) float64 {
+	if len(sortedValues) == 0 {
+		return 0
+	}
+	if len(sortedValues) == 1 {
+		return float64(sortedValues[0])
+	}
+	if percentile <= 0 {
+		return float64(sortedValues[0])
+	}
+	if percentile >= 100 {
+		return float64(sortedValues[len(sortedValues)-1])
+	}
+	rank := float64(percentile) / 100 * float64(len(sortedValues)-1)
+	lower := int(rank)
+	upper := lower + 1
+	if upper >= len(sortedValues) {
+		return float64(sortedValues[lower])
+	}
+	weight := rank - float64(lower)
+	return float64(sortedValues[lower])*(1-weight) + float64(sortedValues[upper])*weight
+}
+
+func percentileInt64(sortedValues []int64, percentile int) float64 {
 	if len(sortedValues) == 0 {
 		return 0
 	}

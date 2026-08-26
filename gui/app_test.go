@@ -8,11 +8,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"voice-qa/internal/config"
+	"voice-qa/internal/perfetto"
 )
 
 func TestAdbTargetArgDetection(t *testing.T) {
@@ -133,6 +137,140 @@ func TestPrepareConfigForSave(t *testing.T) {
 	}
 }
 
+func TestGeneratePerfRecordsReportIncludesManualRecords(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "output")
+	app := NewApp()
+	app.cfg = config.DefaultConfig()
+	app.cfg.OutputDir = outputDir
+
+	perfRoot := filepath.Join(outputDir, "perf")
+	resultDirs := make([]string, 0, 5)
+	startedAt := time.Date(2026, time.August, 26, 10, 0, 0, 0, time.Local)
+	for i := 0; i < 5; i++ {
+		resultDir := filepath.Join(perfRoot, "launch-manual-"+strconv.Itoa(i+1))
+		if err := os.MkdirAll(resultDir, 0755); err != nil {
+			t.Fatalf("os.MkdirAll() error = %v", err)
+		}
+		duration := int64(1000 + i*100)
+		run := perfetto.LaunchResult{
+			Success:          true,
+			Message:          "启动成功",
+			Serial:           "device-1",
+			Component:        "com.example/.MainActivity",
+			PackageName:      "com.example",
+			ManualDurationMS: duration,
+			ResultDir:        resultDir,
+			Timestamp:        startedAt.Format("2006-01-02 15:04:05.000"),
+			StoppedAt:        startedAt.Add(time.Duration(duration) * time.Millisecond).Format("2006-01-02 15:04:05.000"),
+			StopReason:       "manual",
+		}
+		if err := perfetto.SaveMetadata(resultDir, run); err != nil {
+			t.Fatalf("perfetto.SaveMetadata() error = %v", err)
+		}
+		resultDirs = append(resultDirs, resultDir)
+	}
+
+	result := app.GeneratePerfRecordsReport(resultDirs, false, true)
+	if !result.Success {
+		t.Fatalf("GeneratePerfRecordsReport() = %+v, want success", result)
+	}
+	if filepath.Dir(result.ResultDir) != perfRoot || !strings.HasPrefix(filepath.Base(result.ResultDir), "aggregate-") {
+		t.Fatalf("result directory = %q, want aggregate directory under %q", result.ResultDir, perfRoot)
+	}
+	if _, err := os.Stat(filepath.Join(result.ResultDir, "summary.json")); err != nil {
+		t.Fatalf("summary.json was not generated: %v", err)
+	}
+	report, err := os.ReadFile(result.ReportFile)
+	if err != nil {
+		t.Fatalf("os.ReadFile(report) error = %v", err)
+	}
+	reportText := string(report)
+	for _, want := range []string{
+		"启动性能测试聚合报告",
+		"测试轮数: 5",
+		"通过“执行启动计时”开始测试",
+		"以手动(ms)作为本次启动耗时的主要结论",
+		"手动(ms)表示用户看到页面完全加载好并可以进行下一步操作所需的全部时间",
+		"手动(ms)平均值: 1200.00 ms",
+		"手动(ms)中位数: 1200 ms",
+		"手动(ms) P90: 1360 ms",
+		"手动(ms)最小/最大: 1000 / 1400 ms",
+		"手动(ms)标准差: 141.42 ms",
+		"手动(ms)波动系数: 11.8%",
+	} {
+		if !strings.Contains(reportText, want) {
+			t.Fatalf("report does not contain %q:\n%s", want, reportText)
+		}
+	}
+	if noMetrics := app.GeneratePerfRecordsReport(resultDirs, false, false); noMetrics.Success || !strings.Contains(noMetrics.Message, "至少选择一个报告统计项") {
+		t.Fatalf("GeneratePerfRecordsReport() without metrics = %+v, want validation error", noMetrics)
+	}
+}
+
+func TestBuildPerfAggregateReportPrioritizesSelectedManualMetric(t *testing.T) {
+	runs := []perfetto.LaunchResult{
+		{Success: true, TotalTimeMS: 1575, WaitTimeMS: 1595, ManualDurationMS: 14625},
+		{Success: true, TotalTimeMS: 1640, WaitTimeMS: 1656, ManualDurationMS: 14819},
+		{Success: true, TotalTimeMS: 1662, WaitTimeMS: 1664, ManualDurationMS: 15135},
+	}
+	batch := PerfBatchResult{Success: true, Successes: len(runs), Runs: runs, ResultDir: t.TempDir()}
+
+	report := buildPerfAggregateReport(batch, filepath.Join(batch.ResultDir, "aggregate_report.txt"), perfReportMetrics{
+		includeTotal:  true,
+		includeManual: true,
+	})
+	for _, want := range []string{
+		"以手动(ms)作为本次启动耗时的主要结论",
+		"TotalTime/WaitTime 作为 Activity 启动到首帧阶段的辅助指标",
+		"手动(ms)平均值: 14859.67 ms",
+		"手动(ms)中位数: 14819 ms",
+		"手动(ms) P90: 15072 ms",
+		"手动(ms)最小/最大: 14625 / 15135 ms",
+		"手动(ms)标准差: 210.18 ms",
+		"手动(ms)波动系数: 1.4%",
+		"TotalTime 平均值: 1625.67 ms",
+	} {
+		if !strings.Contains(report, want) {
+			t.Fatalf("report does not contain %q:\n%s", want, report)
+		}
+	}
+	manualIndex := strings.Index(report, "手动(ms)平均值")
+	totalIndex := strings.Index(report, "TotalTime 平均值")
+	if manualIndex < 0 || totalIndex < 0 || manualIndex > totalIndex {
+		t.Fatalf("manual summary must appear before TotalTime summary:\n%s", report)
+	}
+
+	totalOnlyReport := buildPerfAggregateReport(batch, filepath.Join(batch.ResultDir, "total_only_report.txt"), perfReportMetrics{
+		includeTotal: true,
+	})
+	if !strings.Contains(totalOnlyReport, "使用 TotalTime 作为本次启动耗时的主要结论") {
+		t.Fatalf("TotalTime-only report does not use TotalTime as its primary conclusion:\n%s", totalOnlyReport)
+	}
+	if strings.Contains(totalOnlyReport, "手动(ms)平均值") {
+		t.Fatalf("TotalTime-only report unexpectedly contains manual summary:\n%s", totalOnlyReport)
+	}
+}
+
+func TestGeneratePerfRecordsReportRejectsDirectoryOutsidePerfRoot(t *testing.T) {
+	baseDir := t.TempDir()
+	outputDir := filepath.Join(baseDir, "output")
+	outsideDir := filepath.Join(baseDir, "outside")
+	if err := os.MkdirAll(outsideDir, 0755); err != nil {
+		t.Fatalf("os.MkdirAll() error = %v", err)
+	}
+	if err := perfetto.SaveMetadata(outsideDir, perfetto.LaunchResult{Success: true, ManualDurationMS: 1000}); err != nil {
+		t.Fatalf("perfetto.SaveMetadata() error = %v", err)
+	}
+
+	app := NewApp()
+	app.cfg = config.DefaultConfig()
+	app.cfg.OutputDir = outputDir
+	result := app.GeneratePerfRecordsReport([]string{outsideDir}, true, true)
+	if result.Success || !strings.Contains(result.Message, "不在启动性能输出目录内") {
+		t.Fatalf("GeneratePerfRecordsReport() = %+v, want outside-root validation error", result)
+	}
+}
+
 func TestTruncateInvalidLimitUsesDefault(t *testing.T) {
 	got := truncate(strings.Repeat("字", defaultFileNameMaxLength+5), -1)
 	if len([]rune(got)) != defaultFileNameMaxLength {
@@ -244,7 +382,7 @@ func TestFetchUpdateInfoAndResolveRelativePackageURL(t *testing.T) {
 			http.Redirect(w, r, "/assets/latest.json", http.StatusFound)
 		case "/assets/latest.json":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"version":"2026.0714.1800","notes":"test","url":"voice-qa.zip","sha256":"abc"}`))
+			_, _ = w.Write([]byte(`{"version":"2026.0714.1800","notes":"test","url":"voice-qa.zip","sha256":"abc","history":[{"version":"2026.0714.1800","date":"2026-07-14","notes":["新增更新历史","  "]},{"version":"","date":"2026-07-13","notes":["忽略无版本记录"]}]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -258,6 +396,9 @@ func TestFetchUpdateInfoAndResolveRelativePackageURL(t *testing.T) {
 	}
 	if info.Version != "2026.0714.1800" || info.URL != "voice-qa.zip" {
 		t.Fatalf("fetchUpdateInfo() = %+v", info)
+	}
+	if len(info.History) != 1 || info.History[0].Version != "2026.0714.1800" || len(info.History[0].Notes) != 1 {
+		t.Fatalf("fetchUpdateInfo() history = %+v", info.History)
 	}
 
 	got, err := resolveUpdateURL(server.URL+"/assets/latest.json", info.URL)

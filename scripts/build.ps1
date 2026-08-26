@@ -22,6 +22,14 @@ $ProjectDir = Split-Path -Parent $ScriptDir
 $DistDir = Join-Path $ProjectDir "dist"
 $ToolRoot = Join-Path $ProjectDir ".build-tools"
 $AppName = "tts"
+$ReleaseNotesFile = Join-Path $ProjectDir "release\release-notes.txt"
+$UpdateHistoryFile = Join-Path $ProjectDir "release\update-history.json"
+if ($env:VOICE_QA_RELEASE_NOTES_FILE) {
+    $ReleaseNotesFile = $env:VOICE_QA_RELEASE_NOTES_FILE
+}
+if ($env:VOICE_QA_UPDATE_HISTORY_FILE) {
+    $UpdateHistoryFile = $env:VOICE_QA_UPDATE_HISTORY_FILE
+}
 
 function Decode-Utf8Base64([string]$Value) {
     return [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Value))
@@ -294,16 +302,94 @@ function Compress-Release([string]$FolderPath, [string]$ArchivePath) {
     Compress-Archive -LiteralPath $FolderPath -DestinationPath $ArchivePath -CompressionLevel Optimal
 }
 
+function Get-UpdateEntryDate([string]$EntryVersion, [string]$EntryDate) {
+    if ($EntryDate) {
+        try {
+            return [datetime]::ParseExact($EntryDate.Trim(), "yyyy-MM-dd", [Globalization.CultureInfo]::InvariantCulture)
+        } catch {
+        }
+    }
+    if ($EntryVersion -match '^(\d{4})\.(\d{2})(\d{2})') {
+        try {
+            return [datetime]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+        } catch {
+        }
+    }
+    return $null
+}
+
+function ConvertTo-UpdateNoteItems($Value) {
+    $source = if ($Value -is [string]) { $Value -split "`r?`n" } else { @($Value) }
+    $result = @()
+    foreach ($item in $source) {
+        $text = ([string]$item).Trim() -replace '^\d+[.、)]\s*', ''
+        if ($text) {
+            $result += $text
+        }
+    }
+    return $result
+}
+
 function New-UpdateManifest([string]$ArchivePath) {
     $archive = Get-Item -LiteralPath $ArchivePath
+    $notesText = if (Test-Path -LiteralPath $ReleaseNotesFile) {
+        (Get-Content -LiteralPath $ReleaseNotesFile -Raw -Encoding UTF8).Trim()
+    } else {
+        ""
+    }
+    if (-not $notesText) {
+        $notesText = "Windows GUI v$Version"
+    }
+
+    $seedHistory = @()
+    if (Test-Path -LiteralPath $UpdateHistoryFile) {
+        $seedValue = Get-Content -LiteralPath $UpdateHistoryFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($seedValue.PSObject.Properties.Name -contains "history") {
+            $seedValue = $seedValue.history
+        }
+        $seedHistory = @($seedValue)
+    }
+
+    $releaseDate = Get-UpdateEntryDate $Version ""
+    if ($null -eq $releaseDate) {
+        $releaseDate = (Get-Date).Date
+    }
+    $currentEntry = [pscustomobject]@{
+        version = $Version
+        date = $releaseDate.ToString("yyyy-MM-dd")
+        notes = @(ConvertTo-UpdateNoteItems $notesText)
+    }
+    $cutoff = $releaseDate.AddYears(-1)
+    $seen = @{}
+    $history = @()
+    foreach ($entry in @($currentEntry) + $seedHistory) {
+        $entryVersion = ([string]$entry.version).Trim()
+        $entryNotes = @(ConvertTo-UpdateNoteItems $entry.notes)
+        $entryDate = Get-UpdateEntryDate $entryVersion ([string]$entry.date)
+        if (-not $entryVersion -or $entryNotes.Count -eq 0 -or $null -eq $entryDate) {
+            continue
+        }
+        if ($entryDate -lt $cutoff -or $seen.ContainsKey($entryVersion)) {
+            continue
+        }
+        $seen[$entryVersion] = $true
+        $history += [pscustomobject]@{
+            version = $entryVersion
+            date = $entryDate.ToString("yyyy-MM-dd")
+            notes = $entryNotes
+        }
+    }
+    $history = @($history | Sort-Object -Property @{Expression = "date"; Descending = $true}, @{Expression = "version"; Descending = $true})
+
     $manifest = [ordered]@{
         version = $Version
-        notes = "Windows GUI v$Version"
+        notes = $notesText
         url = $archive.Name
         sha256 = (Get-FileHash -LiteralPath $archive.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        history = $history
     }
     $manifestPath = Join-Path $DistDir "latest.json"
-    $manifestJson = $manifest | ConvertTo-Json
+    $manifestJson = $manifest | ConvertTo-Json -Depth 6
     Write-Utf8File $manifestPath ($manifestJson + [Environment]::NewLine) $false
     Write-Host "  -> $manifestPath"
 }

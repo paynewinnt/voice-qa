@@ -25,7 +25,7 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
             background: var(--page-bg);
             min-height: 100vh;
-            padding: 14px 18px 24px;
+            padding: 8px 10px 12px;
             color: var(--text-main);
         }
 
@@ -40,13 +40,13 @@
             align-items: center;
             text-align: left;
             color: var(--text-main);
-            min-height: 48px;
-            margin-bottom: 10px;
+            min-height: 34px;
+            margin-bottom: 5px;
             padding: 0 2px;
         }
 
         .header h1 {
-            font-size: 24px;
+            font-size: 20px;
             font-weight: 700;
             text-shadow: none;
         }
@@ -99,8 +99,8 @@
 
         .tab {
             flex: 1;
-            min-width: 130px;
-            padding: 13px 18px;
+            min-width: 116px;
+            padding: 9px 12px;
             text-align: center;
             cursor: pointer;
             font-weight: 600;
@@ -109,7 +109,7 @@
             border: none;
             border-right: 1px solid #e9edf4;
             background: none;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         .tab:last-child {
@@ -129,13 +129,13 @@
 
         .tab-content {
             display: none;
-            padding: 16px 0 24px;
+            padding: 8px 0 12px;
         }
 
         .tab-content.active {
             display: grid;
             grid-template-columns: repeat(12, minmax(0, 1fr));
-            gap: 16px;
+            gap: 8px;
             align-items: start;
         }
 
@@ -143,10 +143,10 @@
             --section-accent: #3b6fb6;
             grid-column: 1 / -1;
             min-width: 0;
-            padding: 16px 18px 18px;
+            padding: 10px 12px 11px;
             background: #ffffff;
             border: 1px solid var(--border);
-            border-top: 3px solid var(--section-accent);
+            border-top: 2px solid var(--section-accent);
             border-radius: 6px;
             box-shadow: 0 2px 8px rgba(15, 23, 42, 0.045);
         }
@@ -163,20 +163,24 @@
             grid-column: span 4;
         }
 
+        .feature-section.quarter {
+            grid-column: span 3;
+        }
+
         .generate-text-section {
             grid-column: span 5;
             display: flex;
             flex-direction: column;
-            height: calc(100vh - 170px);
-            min-height: 560px;
+            height: calc(100vh - 124px);
+            min-height: 440px;
         }
 
         .generate-task-section {
             grid-column: span 7;
             display: flex;
             flex-direction: column;
-            height: calc(100vh - 170px);
-            min-height: 560px;
+            height: calc(100vh - 124px);
+            min-height: 440px;
         }
 
         #generate.tab-content.active {
@@ -191,7 +195,7 @@
 
         #generate .generate-task-section .output-console.active {
             flex: 1 1 auto;
-            min-height: 220px;
+            min-height: 150px;
             max-height: none;
         }
 
@@ -200,8 +204,8 @@
             display: flex;
             align-items: center;
             justify-content: flex-end;
-            gap: 14px;
-            min-height: 38px;
+            gap: 8px;
+            min-height: 32px;
             padding: 0 2px;
         }
 
@@ -211,13 +215,13 @@
 
         .config-toolbar-actions {
             display: flex;
-            gap: 10px;
+            gap: 6px;
             flex-wrap: wrap;
         }
 
         .config-column {
             display: grid;
-            gap: 16px;
+            gap: 8px;
             min-width: 0;
             align-content: start;
         }
@@ -235,7 +239,7 @@
         }
 
         #config .form-group {
-            margin-bottom: 14px;
+            margin-bottom: 8px;
         }
 
         #config .form-group:last-child {
@@ -243,10 +247,10 @@
         }
 
         .field-help {
-            margin-top: 6px;
+            margin-top: 3px;
             color: var(--text-muted);
             font-size: 12px;
-            line-height: 1.45;
+            line-height: 1.35;
         }
 
         .update-source-list {
@@ -309,27 +313,27 @@
         }
 
         .form-group {
-            margin-bottom: 16px;
+            margin-bottom: 8px;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
             font-weight: 500;
             color: #333;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         /* 模板编辑器样式 */
         .template-segment {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 10px;
-            margin-bottom: 8px;
+            gap: 6px;
+            padding: 6px 7px;
+            margin-bottom: 0;
             background: #f8f9fa;
             border: 1px solid #e0e0e0;
-            border-radius: 8px;
+            border-radius: 6px;
         }
 
         .template-segment.voice {
@@ -347,31 +351,34 @@
 
         .template-segment .segment-type {
             font-weight: 500;
-            min-width: 60px;
+            min-width: 34px;
             color: #666;
             font-size: 12px;
         }
 
         .template-segment input {
             flex: 1;
-            padding: 8px;
+            min-width: 0;
+            padding: 6px 7px;
             border: 1px solid #ddd;
             border-radius: 4px;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         .template-segment input[type="number"] {
-            width: 80px;
+            width: 64px;
             flex: none;
         }
 
         .template-segment .segment-actions {
             display: flex;
+            flex: 0 0 auto;
             gap: 5px;
+            margin-left: auto;
         }
 
         .template-segment .segment-actions button {
-            padding: 5px 8px;
+            padding: 4px 6px;
             font-size: 12px;
             border: none;
             border-radius: 4px;
@@ -379,8 +386,16 @@
         }
 
         .template-segment .btn-move {
+            width: 28px;
+            height: 26px;
+            padding: 0;
             background: #e0e0e0;
             color: #333;
+        }
+
+        .template-segment .btn-move:disabled {
+            opacity: 0.38;
+            cursor: not-allowed;
         }
 
         .template-segment .btn-delete {
@@ -388,7 +403,7 @@
             color: white;
         }
 
-        .template-segment .btn-move:hover {
+        .template-segment .btn-move:not(:disabled):hover {
             background: #bdbdbd;
         }
 
@@ -400,10 +415,10 @@
         .form-group textarea,
         .form-group select {
             width: 100%;
-            padding: 12px;
+            padding: 8px 9px;
             border: 1px solid var(--border);
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
             transition: border-color 0.3s;
             background: #ffffff;
             color: var(--text-main);
@@ -420,20 +435,20 @@
         .form-row {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
+            gap: 8px;
         }
 
         .form-row-2 {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
+            gap: 8px;
         }
 
         .btn {
-            padding: 12px 24px;
+            padding: 8px 14px;
             border: none;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.3s;
@@ -493,25 +508,50 @@
 
         .btn-group {
             display: flex;
-            gap: 10px;
-            margin-top: 20px;
+            gap: 6px;
+            margin-top: 8px;
             flex-wrap: wrap;
+        }
+
+        .perf-stats-options {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 34px;
+            padding: 0 9px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #fff;
+        }
+
+        .perf-stats-options label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-main);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .perf-stats-options input[type="checkbox"] {
+            margin: 0;
         }
 
         .section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 14px;
-            padding-bottom: 10px;
+            gap: 8px;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
             border-bottom: 1px solid #e9edf4;
         }
 
         .section-header::before {
             content: "";
             width: 4px;
-            height: 18px;
+            height: 15px;
             flex: 0 0 4px;
             border-radius: 2px;
             background: var(--section-accent, var(--accent));
@@ -519,7 +559,7 @@
 
         .section-title {
             flex: 1;
-            font-size: 17px;
+            font-size: 15px;
             font-weight: 700;
             color: var(--text-main);
         }
@@ -535,7 +575,7 @@
         .text-item {
             display: flex;
             align-items: center;
-            padding: 12px 15px;
+            padding: 8px 10px;
             border-bottom: 1px solid #eee;
         }
 
@@ -575,7 +615,7 @@
         .add-text-area {
             display: flex;
             gap: 10px;
-            margin-top: 15px;
+            margin-top: 8px;
         }
 
         .add-text-area input {
@@ -588,7 +628,7 @@
             background: #e0e0e0;
             border-radius: 4px;
             overflow: hidden;
-            margin-top: 15px;
+            margin-top: 8px;
             display: none;
         }
 
@@ -657,14 +697,14 @@
         }
 
         .status-text {
-            margin-top: 10px;
-            font-size: 13px;
+            margin-top: 5px;
+            font-size: 12px;
             color: #666;
         }
 
         .result-list {
-            margin-top: 15px;
-            max-height: 200px;
+            margin-top: 8px;
+            max-height: 160px;
             overflow-y: auto;
         }
 
@@ -688,11 +728,11 @@
         }
 
         .alert {
-            padding: 12px 15px;
+            padding: 7px 9px;
             border-radius: 6px;
-            margin-bottom: 15px;
-            font-size: 14px;
-            line-height: 1.55;
+            margin-bottom: 8px;
+            font-size: 12px;
+            line-height: 1.4;
         }
 
         .alert-success {
@@ -712,9 +752,9 @@
         }
 
         .perf-capability-panel {
-            margin-top: 14px;
+            margin-top: 8px;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 6px;
             overflow: hidden;
             display: none;
         }
@@ -728,7 +768,7 @@
             justify-content: space-between;
             align-items: center;
             gap: 10px;
-            padding: 10px 12px;
+            padding: 6px 8px;
             background: var(--surface-muted);
             border-bottom: 1px solid var(--border);
         }
@@ -751,9 +791,9 @@
         }
 
         .perf-capability-item {
-            padding: 10px 12px;
+            padding: 6px 8px;
             border-right: 1px solid var(--border);
-            min-height: 66px;
+            min-height: 50px;
         }
 
         .perf-capability-item:last-child {
@@ -763,7 +803,7 @@
         .perf-capability-label {
             font-size: 12px;
             color: var(--text-muted);
-            margin-bottom: 6px;
+            margin-bottom: 3px;
         }
 
         .perf-capability-value {
@@ -774,7 +814,7 @@
         }
 
         .perf-capability-detail {
-            margin-top: 5px;
+            margin-top: 3px;
             font-size: 12px;
             color: var(--text-muted);
             overflow-wrap: anywhere;
@@ -802,13 +842,13 @@
         .command-panel {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
-            gap: 12px;
+            gap: 6px;
             align-items: stretch;
         }
 
         .command-list {
             display: grid;
-            gap: 8px;
+            gap: 5px;
         }
 
         .command-list.three {
@@ -818,13 +858,13 @@
         .command-item {
             display: grid;
             grid-template-columns: auto minmax(0, 1fr);
-            gap: 10px;
+            gap: 7px;
             align-items: start;
-            padding: 10px 12px;
+            padding: 6px 8px;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 6px;
             background: #fff;
-            min-height: 74px;
+            min-height: 0;
         }
 
         .command-item input[type="checkbox"] {
@@ -842,9 +882,9 @@
 
         .command-desc {
             display: block;
-            margin-top: 4px;
+            margin-top: 2px;
             font-size: 12px;
-            line-height: 1.45;
+            line-height: 1.3;
             color: var(--text-muted);
         }
 
@@ -862,13 +902,20 @@
         }
 
         .command-action {
-            min-width: 96px;
+            min-width: 82px;
             align-self: stretch;
         }
 
+        .perf-launch-action {
+            min-width: 116px;
+            min-height: 48px;
+            padding: 8px 14px;
+            font-size: 13px;
+        }
+
         .analysis-panel {
-            margin-top: 20px;
-            padding-top: 18px;
+            margin-top: 10px;
+            padding-top: 10px;
             border-top: 1px dashed #b9c4d3;
             background: transparent;
         }
@@ -876,14 +923,14 @@
         .analysis-grid {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-            margin: 12px 0;
+            gap: 6px;
+            margin: 7px 0;
         }
 
         .analysis-stat {
-            padding: 10px 12px;
+            padding: 6px 8px;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 6px;
             background: var(--surface-muted);
         }
 
@@ -894,13 +941,13 @@
         }
 
         .analysis-stat-value {
-            font-size: 18px;
+            font-size: 15px;
             font-weight: 700;
             color: var(--accent);
         }
 
         .analysis-device-title {
-            margin-top: 14px;
+            margin-top: 8px;
             font-size: 13px;
             font-weight: 700;
             color: var(--text-main);
@@ -910,13 +957,13 @@
         .analysis-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 8px;
+            margin-top: 5px;
             font-size: 12px;
         }
 
         .analysis-table th,
         .analysis-table td {
-            padding: 8px 10px;
+            padding: 5px 7px;
             border: 1px solid var(--border);
             text-align: left;
             vertical-align: top;
@@ -930,10 +977,10 @@
         }
 
         .analysis-empty {
-            margin-top: 8px;
-            padding: 10px 12px;
+            margin-top: 5px;
+            padding: 6px 8px;
             border: 1px dashed var(--border);
-            border-radius: 8px;
+            border-radius: 6px;
             color: var(--text-muted);
             font-size: 13px;
         }
@@ -946,6 +993,509 @@
             background: #ffffff;
         }
 
+        .table-shell th,
+        .table-shell td {
+            padding: 6px 8px !important;
+        }
+
+        #devmgr .dev-device-section { grid-column: span 6; }
+        #devmgr .dev-record-section,
+        #devmgr .dev-install-section { grid-column: span 3; }
+
+        #devmgr .dev-command-section,
+        #devmgr .dev-log-section {
+            grid-column: 1 / -1;
+        }
+
+        .dev-device-section .table-shell {
+            max-height: 104px;
+            overflow-y: auto;
+        }
+
+        .dev-device-workspace {
+            display: grid;
+            grid-template-columns: minmax(250px, 5fr) minmax(0, 7fr);
+            gap: 8px;
+            align-items: start;
+        }
+
+        .dev-device-subtitle {
+            margin: 0 0 5px;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .dev-command-workspace {
+            display: grid;
+            grid-template-columns: minmax(520px, 5fr) minmax(0, 7fr);
+            gap: 10px;
+            align-items: start;
+        }
+
+        .dev-command-fields {
+            display: grid;
+            grid-template-columns: minmax(220px, 2fr) minmax(0, 5fr);
+            gap: 8px;
+        }
+
+        .dev-command-fields .form-group {
+            min-width: 0;
+            margin-bottom: 6px;
+        }
+
+        .dev-command-fields .adb-command-box textarea {
+            height: 58px;
+            min-height: 58px;
+        }
+
+        .dev-command-result {
+            min-width: 0;
+        }
+
+        .dev-command-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+
+        .dev-command-history-menu {
+            margin-top: 6px;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface-muted);
+        }
+
+        .dev-package-version-editor {
+            display: grid;
+            grid-template-columns: auto minmax(220px, 1fr) auto auto;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+            padding: 7px 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface-muted);
+            font-size: 12px;
+        }
+
+        .dev-package-version-editor[hidden] {
+            display: none;
+        }
+
+        .dev-package-version-editor input {
+            min-width: 0;
+            min-height: 32px;
+            padding: 6px 8px;
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            background: #ffffff;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 12px;
+        }
+
+        .dev-package-version-editor .btn {
+            padding: 6px 9px;
+            font-size: 12px;
+        }
+
+        .dev-command-history-menu[hidden] {
+            display: none;
+        }
+
+        .dev-command-history-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 5px;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .dev-command-history-clear {
+            padding: 2px 4px;
+            border: 0;
+            background: transparent;
+            color: #b42318;
+            cursor: pointer;
+            font: inherit;
+        }
+
+        .dev-command-history-list {
+            display: grid;
+            gap: 4px;
+        }
+
+        .dev-command-history-item {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            background: #ffffff;
+            color: var(--text-main);
+            cursor: pointer;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 12px;
+            line-height: 1.35;
+            text-align: left;
+            overflow-wrap: anywhere;
+        }
+
+        .dev-command-history-item:hover {
+            border-color: #7c8da8;
+            background: #f7f9fc;
+        }
+
+        .dev-command-history-empty {
+            padding: 7px 8px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .dev-log-workspace {
+            min-width: 0;
+        }
+
+        .dev-log-workspace .analysis-panel {
+            margin: 14px 0 0;
+            padding: 12px 0 0;
+            border-top: 1px dashed #b9c4d3;
+            border-left: none;
+        }
+
+        .dev-log-filter-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .dev-log-filter-grid .form-group {
+            min-width: 0;
+            margin-bottom: 2px;
+        }
+
+        .dev-log-action-row {
+            display: grid;
+            grid-template-columns: minmax(0, 7fr) minmax(460px, 5fr);
+            gap: 8px;
+            align-items: stretch;
+            margin-top: 6px;
+        }
+
+        .dev-log-secondary-actions {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 4px;
+            margin: 0 !important;
+        }
+
+        .dev-field-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            min-height: 22px;
+            margin-bottom: 4px;
+        }
+
+        .dev-field-label label {
+            margin-bottom: 0 !important;
+        }
+
+        .dev-inline-action {
+            padding: 2px 5px;
+            border: 0;
+            background: transparent;
+            color: #194185;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .dev-inline-action:hover {
+            text-decoration: underline;
+        }
+
+        .dev-inline-action:disabled {
+            color: var(--text-muted);
+            cursor: wait;
+            text-decoration: none;
+        }
+
+        .dev-log-query-pane .command-list,
+        .dev-log-workspace .analysis-panel .command-list {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .dev-install-section .output-console.active {
+            max-height: 96px;
+        }
+
+        #devApkList {
+            overflow-wrap: anywhere;
+        }
+
+        .dev-command-section .output-console.active {
+            height: clamp(140px, 18vh, 190px);
+            min-height: 140px;
+            max-height: 190px;
+            resize: vertical;
+        }
+
+        #devLogOutput.output-console.active {
+            height: clamp(360px, 52vh, 600px);
+            min-height: 360px;
+            max-height: none;
+            line-height: 1.45;
+            resize: vertical;
+        }
+
+        #devAnalysisResult {
+            max-height: 620px;
+            overflow: auto;
+        }
+
+        #perf .perf-target-section {
+            grid-column: span 4;
+        }
+
+        #perf .perf-control-section {
+            grid-column: span 3;
+        }
+
+        #perf .perf-timing-section {
+            grid-column: span 5;
+        }
+
+        #perf .perf-records-section {
+            grid-column: 1 / -1;
+        }
+
+        #perfPkgSelect {
+            height: 70px;
+        }
+
+        #devmgr select,
+        #perf select,
+        #play select,
+        #devmgr input,
+        #perf input,
+        #play input {
+            min-height: 34px;
+            padding: 7px 8px !important;
+            border-radius: 6px !important;
+            font-size: 13px !important;
+        }
+
+        #devmgr input[type="checkbox"],
+        #perf input[type="checkbox"] {
+            min-height: 0;
+            padding: 0 !important;
+        }
+
+        #perf .feature-section > .section-header:not(:first-child) {
+            margin-top: 10px !important;
+        }
+
+        #play .play-dir-area,
+        #play .alert {
+            margin-bottom: 8px !important;
+        }
+
+        #perf .perf-control-section .command-list.three {
+            grid-template-columns: 1fr;
+        }
+
+        #perf .perf-control-section .command-action {
+            align-self: center;
+            min-height: 44px;
+        }
+
+        .dev-log-secondary-actions .btn {
+            min-width: 0;
+            padding: 7px 4px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .perf-timer-actions {
+            display: block;
+        }
+
+        .perf-timer-actions .command-panel {
+            min-width: 0;
+        }
+
+        .perf-records-section .table-shell {
+            max-height: 190px;
+            overflow-y: auto;
+        }
+
+        #play .play-device-section,
+        #play .play-directory-section,
+        #play .play-run-section {
+            grid-column: span 4;
+        }
+
+        #config .config-column {
+            display: contents;
+        }
+
+        #config .config-engine-section {
+            grid-column: span 3;
+            order: 1;
+        }
+
+        #config .config-play-section {
+            grid-column: span 2;
+            order: 1;
+        }
+
+        #config .config-file-section {
+            grid-column: span 4;
+            order: 1;
+        }
+
+        #config .config-video-section {
+            grid-column: span 3;
+            order: 1;
+        }
+
+        #config .config-template-section {
+            grid-column: 1 / -1;
+            order: 2;
+        }
+
+        #config .config-file-section {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 120px;
+            gap: 0 8px;
+        }
+
+        #config .config-file-section .section-header {
+            grid-column: 1 / -1;
+        }
+
+        #templateEditor {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 6px;
+            margin-bottom: 8px !important;
+        }
+
+        .update-workspace {
+            display: grid;
+            grid-template-columns: minmax(0, 3fr) minmax(360px, 2fr);
+            gap: 12px;
+            align-items: start;
+        }
+
+        .update-history-panel {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #d9e0ec;
+        }
+
+        .update-history-panel[hidden] {
+            display: none;
+        }
+
+        .update-history-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .update-history-title {
+            color: #1d2a44;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .update-history-summary,
+        .update-history-date {
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .update-history-list {
+            max-height: min(58vh, 620px);
+            overflow: auto;
+            border: 1px solid #d9e0ec;
+            border-radius: 6px;
+            background: #fff;
+        }
+
+        .update-history-entry {
+            display: grid;
+            grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+            gap: 16px;
+            padding: 12px 14px;
+            border-bottom: 1px solid #e5e9f0;
+        }
+
+        .update-history-entry:last-child {
+            border-bottom: 0;
+        }
+
+        .update-history-version {
+            color: #173d78;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .update-history-notes {
+            margin: 0;
+            padding-left: 20px;
+            color: #27364d;
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        .update-history-empty {
+            padding: 18px;
+            color: var(--text-muted);
+            font-size: 13px;
+            text-align: center;
+        }
+
+        @media (max-width: 1280px) {
+            #config .config-engine-section,
+            #config .config-play-section,
+            #config .config-file-section,
+            #config .config-video-section {
+                grid-column: span 6;
+            }
+
+            #devmgr .dev-command-section,
+            #devmgr .dev-log-section,
+            #perf .perf-timing-section {
+                grid-column: 1 / -1;
+            }
+
+            #perf .perf-target-section,
+            #perf .perf-control-section {
+                grid-column: span 6;
+            }
+
+            .dev-log-filter-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .dev-log-action-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
         @media (max-width: 1080px) {
             .feature-section.half,
             .feature-section.two-thirds,
@@ -955,6 +1505,36 @@
             .config-column.narrow,
             .config-column.wide {
                 grid-column: 1 / -1;
+            }
+
+            #devmgr .dev-device-section,
+            #devmgr .dev-record-section,
+            #devmgr .dev-install-section,
+            #devmgr .dev-command-section,
+            #devmgr .dev-log-section,
+            #perf .perf-target-section,
+            #perf .perf-control-section,
+            #perf .perf-timing-section,
+            #play .play-device-section,
+            #play .play-directory-section,
+            #play .play-run-section,
+            #config .config-engine-section,
+            #config .config-play-section,
+            #config .config-file-section,
+            #config .config-video-section {
+                grid-column: 1 / -1;
+            }
+
+            .dev-command-workspace,
+            .dev-device-workspace,
+            .update-workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .dev-log-workspace .analysis-panel {
+                padding: 10px 0 0;
+                border-top: 1px dashed #b9c4d3;
+                border-left: none;
             }
 
             .generate-text-section {
@@ -1004,7 +1584,7 @@
             .generate-text-section,
             .generate-task-section {
                 grid-column: 1;
-                padding: 14px;
+                padding: 10px;
             }
 
             .generate-text-section {
@@ -1062,6 +1642,42 @@
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
+            .perf-timer-actions,
+            .dev-command-fields,
+            .dev-log-filter-grid,
+            .dev-log-action-row,
+            #templateEditor,
+            #config .config-file-section {
+                grid-template-columns: 1fr;
+            }
+
+            .dev-log-query-pane .command-list,
+            .dev-log-workspace .analysis-panel .command-list {
+                grid-template-columns: 1fr;
+            }
+
+            .dev-log-secondary-actions {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .dev-package-version-editor {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .dev-package-version-editor label,
+            .dev-package-version-editor input {
+                grid-column: 1 / -1;
+            }
+
+            #devLogOutput.output-console.active {
+                height: 360px;
+                min-height: 280px;
+            }
+
+            #config .config-file-section .section-header {
+                grid-column: 1;
+            }
+
             .adb-connect-area,
             .play-dir-area {
                 align-items: stretch !important;
@@ -1080,13 +1696,18 @@
                 grid-column: 1 / -1;
                 grid-row: 2;
             }
+
+            .update-history-entry {
+                grid-template-columns: 1fr;
+                gap: 6px;
+            }
         }
 
         .audio-structure {
             background: #f8f9fa;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 15px;
+            border-radius: 6px;
+            padding: 8px;
+            margin-top: 8px;
             font-size: 13px;
             color: #666;
             text-align: center;
@@ -1115,16 +1736,16 @@
         .adb-connect-area {
             display: flex;
             gap: 10px;
-            margin-bottom: 15px;
+            margin-bottom: 8px;
             align-items: center;
         }
 
         .adb-connect-area input {
             flex: 1;
-            padding: 10px 12px;
+            padding: 8px 9px;
             border: 1px solid #ddd;
-            border-radius: 8px;
-            font-size: 14px;
+            border-radius: 6px;
+            font-size: 13px;
         }
 
         .adb-connect-area input:focus {
@@ -1134,13 +1755,13 @@
 
         .adb-command-box {
             border: 1px solid #ddd;
-            border-radius: 8px;
+            border-radius: 6px;
             overflow: hidden;
             background: #fff;
         }
 
         .adb-command-prefix {
-            padding: 10px 12px;
+            padding: 6px 8px;
             background: #f5f7fb;
             border-bottom: 1px solid #ddd;
             color: var(--accent);
@@ -1151,7 +1772,7 @@
 
         .adb-command-box textarea {
             width: 100%;
-            min-height: 110px;
+            min-height: 72px;
             border: none;
             border-radius: 0;
             resize: vertical;
@@ -1169,10 +1790,10 @@
             color: #d4d4d4;
             font-family: 'Consolas', 'Monaco', monospace;
             font-size: 12px;
-            padding: 12px;
-            border-radius: 8px;
-            margin-top: 15px;
-            max-height: 300px;
+            padding: 8px;
+            border-radius: 6px;
+            margin-top: 8px;
+            max-height: 180px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
@@ -1267,23 +1888,23 @@
 
             <!-- 设备管理 -->
             <div id="devmgr" class="tab-content active">
-                <section class="feature-section one-third tone-blue">
+                <section class="feature-section dev-device-section tone-blue">
                 <div class="section-header">
-                    <span class="section-title">连接设备</span>
+                    <span class="section-title">设备连接</span>
+                    <button class="btn btn-secondary" onclick="devRefresh()" style="padding:6px 14px;font-size:13px;">刷新列表</button>
                 </div>
 
+                <div class="dev-device-workspace">
+                <div>
                 <div class="adb-connect-area">
                     <input type="text" id="devAdbIp" placeholder="输入设备 IP 地址，如: 10.42.0.165">
                     <button class="btn btn-warning" onclick="devConnect()">连接</button>
                 </div>
                 <div id="devStatus" class="alert alert-info">请连接设备或刷新列表</div>
-                </section>
-
-                <section class="feature-section two-thirds tone-slate">
-                <div class="section-header" style="margin-top:20px;">
-                    <span class="section-title">已连接设备</span>
-                    <button class="btn btn-secondary" onclick="devRefresh()" style="padding:6px 14px;font-size:13px;">刷新列表</button>
                 </div>
+
+                <div>
+                <div class="dev-device-subtitle">已连接设备</div>
 
                 <div class="table-shell">
                     <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -1302,13 +1923,15 @@
                     </table>
                 </div>
 
-                <div class="btn-group" style="margin-top:15px;">
+                <div class="btn-group" style="margin-top:8px;">
                     <button class="btn btn-danger" onclick="devDisconnectSelected()">断开选中设备</button>
                     <button class="btn btn-secondary" onclick="devDisconnectAll()">断开所有设备</button>
                 </div>
+                </div>
+                </div>
                 </section>
 
-                <section class="feature-section half tone-cyan">
+                <section class="feature-section dev-record-section tone-cyan">
                 <div class="section-header" style="margin-top:25px;">
                     <span class="section-title">手动录屏</span>
                 </div>
@@ -1323,14 +1946,13 @@
                 </div>
 
                 <div class="btn-group" style="margin-top:15px;">
-                    <button class="btn btn-primary" id="devStartRecordBtn" onclick="devStartRecording()">开始录屏</button>
-                    <button class="btn btn-danger" id="devStopRecordBtn" onclick="devStopRecording()" disabled>停止录屏并保存</button>
+                    <button class="btn btn-primary" id="devRecordToggleBtn" onclick="devToggleRecording()">开始录屏</button>
                 </div>
 
                 <div class="status-text" id="devRecordStatus"></div>
                 </section>
 
-                <section class="feature-section half tone-green">
+                <section class="feature-section dev-install-section tone-green">
                 <div class="section-header" style="margin-top:25px;">
                     <span class="section-title">安装 APK</span>
                 </div>
@@ -1348,13 +1970,16 @@
                 <div class="output-console" id="devOutput"></div>
                 </section>
 
-                <section class="feature-section tone-slate">
+                <section class="feature-section dev-command-section tone-slate">
                 <div class="section-header" style="margin-top:25px;">
                     <span class="section-title">命令执行</span>
                 </div>
 
+                <div class="dev-command-workspace">
+                <div>
                 <div class="alert alert-info" style="font-size:13px;">这里执行的命令只会调用程序目录或当前目录下的 <code>adb/adb.exe</code>，不会读取系统 PATH。可直接输入 <code>adb devices</code>，也可只输入 <code>devices</code>。设备类命令未指定目标时，单设备会自动追加 <code>-s</code>，多设备会对每台设备依次执行。</div>
 
+                <div class="dev-command-fields">
                 <div class="form-group">
                     <label for="devCommandDevice">目标设备（可选）</label>
                     <select id="devCommandDevice" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
@@ -1369,26 +1994,51 @@
                         <textarea id="devCommandInput" placeholder="示例：devices&#10;示例：shell getprop ro.product.model&#10;示例：-s 192.168.1.10:5555 shell pm list packages"></textarea>
                     </div>
                 </div>
+                </div>
 
-                <div class="btn-group" style="margin-top:15px;">
+                <div class="dev-command-controls">
                     <button class="btn btn-primary" id="devRunCommandBtn" onclick="devRunCommand()">执行命令</button>
                     <button class="btn btn-secondary" onclick="devFillCommand('devices')">devices</button>
                     <button class="btn btn-secondary" onclick="devFillCommand('shell getprop ro.product.model')">读取机型</button>
+                    <button class="btn btn-secondary" onclick="devFillPackageVersionCommand()">包版本</button>
+                    <button class="btn btn-secondary" onclick="devFillCommand('shell getprop ro.build.version.release')">系统版本</button>
+                    <button class="btn btn-secondary" onclick="devFillCommand('shell &quot;dumpsys window | grep -E \'mCurrentFocus|mFocusedApp\'&quot;')">前台页面</button>
+                    <button class="btn btn-secondary" onclick="devFillCommand('shell wm size')">屏幕尺寸</button>
                     <button class="btn btn-secondary" onclick="devFillCommand('shell pm list packages -3')">三方包列表</button>
+                    <button class="btn btn-secondary" id="devCommandHistoryBtn" onclick="devToggleCommandHistory()">历史指令</button>
+                </div>
+                <div class="dev-package-version-editor" id="devPackageVersionEditor" hidden>
+                    <label for="devPackageVersionInput">应用包名</label>
+                    <input id="devPackageVersionInput" list="devLogPackageList" placeholder="如：com.example.app">
+                    <button type="button" class="btn btn-primary" onclick="devApplyPackageVersionCommand()">填充指令</button>
+                    <button type="button" class="btn btn-secondary" onclick="devClosePackageVersionEditor()">取消</button>
+                </div>
+                <div class="dev-command-history-menu" id="devCommandHistoryMenu" hidden>
+                    <div class="dev-command-history-header">
+                        <span>最近执行的 10 条 ADB 指令</span>
+                        <button type="button" class="dev-command-history-clear" onclick="devClearCommandHistory()">清空历史</button>
+                    </div>
+                    <div class="dev-command-history-list" id="devCommandHistoryList"></div>
+                </div>
                 </div>
 
+                <div class="dev-command-result">
                 <div class="status-text" id="devCommandStatus"></div>
                 <div class="output-console" id="devCommandOutput"></div>
+                </div>
+                </div>
                 </section>
 
-                <section class="feature-section tone-amber">
+                <section class="feature-section dev-log-section tone-amber">
                 <div class="section-header" style="margin-top:25px;">
                     <span class="section-title">日志查看</span>
                 </div>
 
-                <div class="alert alert-info" style="font-size:13px;">用于快速查看设备 logcat。填写应用包名后会优先使用 <code>pidof &lt;package&gt;</code> 和 <code>logcat --pid</code> 查询当前进程日志；应用未运行或设备不支持时会回退到包名文本过滤。</div>
+                <div class="dev-log-workspace">
+                <div class="dev-log-query-pane">
+                <div class="alert alert-info" style="font-size:13px;">按包名、PID、级别和关键字查询 logcat；应用未运行时自动回退到包名过滤。</div>
 
-                <div class="form-row-2">
+                <div class="dev-log-filter-grid">
                     <div class="form-group">
                         <label for="devLogDevice">目标设备</label>
                         <select id="devLogDevice" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
@@ -1396,13 +2046,13 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="devLogPackage">应用包名（可选）</label>
+                        <div class="dev-field-label">
+                            <label for="devLogPackage">应用包名（可选）</label>
+                            <button type="button" class="dev-inline-action" id="devLoadLogPackagesBtn" onclick="devLoadLogPackages()">加载包名</button>
+                        </div>
                         <input id="devLogPackage" list="devLogPackageList" placeholder="如：com.example.app">
                         <datalist id="devLogPackageList"></datalist>
                     </div>
-                </div>
-
-                <div class="form-row">
                     <div class="form-group">
                         <label for="devLogBuffer">日志缓冲区</label>
                         <select id="devLogBuffer" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
@@ -1430,13 +2080,13 @@
                         <label for="devLogLines">最近行数</label>
                         <input id="devLogLines" type="number" min="50" max="5000" step="50" value="300">
                     </div>
+                    <div class="form-group">
+                        <label for="devLogKeyword">关键字（可选）</label>
+                        <input id="devLogKeyword" placeholder="如：FATAL EXCEPTION、ActivityTaskManager、业务关键字">
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="devLogKeyword">关键字（可选）</label>
-                    <input id="devLogKeyword" placeholder="如：FATAL EXCEPTION、ActivityTaskManager、业务关键字">
-                </div>
-
+                <div class="dev-log-action-row">
                 <div class="command-panel">
                     <div class="command-list">
                         <label class="command-item">
@@ -1457,16 +2107,17 @@
                     <button class="btn btn-primary command-action" id="devQueryLogBtn" onclick="devQueryLogcat()">查询日志</button>
                 </div>
 
-                <div class="btn-group" style="margin-top:15px;">
-                    <button class="btn btn-secondary" onclick="devLoadLogPackages()">加载包名</button>
+                <div class="btn-group dev-log-secondary-actions">
                     <button class="btn btn-secondary" onclick="devQueryLogcat('errors')">只看错误</button>
                     <button class="btn btn-secondary" onclick="devQueryLogcat('crash')">崩溃日志</button>
                     <button class="btn btn-danger" id="devClearLogBtn" onclick="devClearLogcat()">清空日志</button>
                     <button class="btn btn-secondary" onclick="devOpenLogDir()">打开日志目录</button>
                 </div>
+                </div>
 
                 <div class="status-text" id="devLogStatus"></div>
                 <div class="output-console" id="devLogOutput"></div>
+                </div>
 
                 <div class="analysis-panel">
                     <div class="section-header" style="margin-bottom:12px;">
@@ -1514,12 +2165,13 @@
                     <div class="status-text" id="devAnalysisStatus"></div>
                     <div id="devAnalysisResult"></div>
                 </div>
+                </div>
                 </section>
             </div>
 
             <!-- 启动时间测试 -->
             <div id="perf" class="tab-content">
-                <section class="feature-section tone-blue">
+                <section class="feature-section perf-target-section tone-blue">
                 <div class="section-header">
                     <span class="section-title">测试目标</span>
                 </div>
@@ -1535,7 +2187,7 @@
                     <span class="section-title">应用包名</span>
                 </div>
 
-                <select id="perfPkgSelect" class="perf-command-select" size="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;" onclick="perfOnPkgSelect()">
+                <select id="perfPkgSelect" class="perf-command-select" size="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:8px;" onclick="perfOnPkgSelect()">
                     <option value="zjiptv.mds">zjiptv.mds</option>
                     <option value="com.telecom.video">com.telecom.video</option>
                     <option value="__other__" style="color:#2d4f95;">-- 其它（点击列出全部）--</option>
@@ -1562,7 +2214,7 @@
                 </div>
                 </section>
 
-                <section class="feature-section tone-red">
+                <section class="feature-section perf-control-section tone-red">
                 <div class="section-header" style="margin-top:20px;">
                     <span class="section-title">应用控制</span>
                 </div>
@@ -1599,14 +2251,14 @@
                 </div>
                 </section>
 
-                <section class="feature-section tone-green">
+                <section class="feature-section perf-timing-section tone-green">
                 <div class="section-header" style="margin-top:20px;">
                     <span class="section-title">启动计时</span>
                 </div>
 
                 <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
                     <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
-                        <input type="checkbox" id="perfettoEnabled" checked>
+                        <input type="checkbox" id="perfettoEnabled">
                         启用 Perfetto
                     </label>
                     <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
@@ -1622,30 +2274,19 @@
                     <button class="btn btn-secondary" id="perfOpenResultBtn" onclick="perfOpenResultDir()" style="padding:8px 14px;font-size:13px;" disabled>打开结果目录</button>
                 </div>
 
+                <div class="perf-timer-actions">
                 <div class="command-panel">
                     <div class="command-list">
                         <div class="command-item">
                             <span></span>
                             <span>
-                                <span class="command-name">am start -W -n &lt;component&gt;</span>
-                                <span class="command-desc">启动目标 Activity 并读取 ThisTime、TotalTime、WaitTime；启用 Perfetto 时会同步开始 trace 采集。</span>
+                                <span class="command-name" id="perfTimerCommandName">am start -W -n &lt;component&gt;</span>
+                                <span class="command-desc" id="perfTimerCommandDesc">启动目标 Activity 并读取 ThisTime、TotalTime、WaitTime；启用 Perfetto 时会同步开始 trace 采集。</span>
                             </span>
                         </div>
                     </div>
-                    <button class="btn btn-primary command-action" id="perfStartBtn" onclick="perfStartTimer()">执行启动计时</button>
+                    <button class="btn btn-primary command-action perf-launch-action" id="perfTimerToggleBtn" onclick="perfToggleTimer()">执行启动计时</button>
                 </div>
-
-                <div class="command-panel" style="margin-top:8px;">
-                    <div class="command-list">
-                        <div class="command-item">
-                            <span></span>
-                            <span>
-                                <span class="command-name">perfetto --stop / pull trace</span>
-                                <span class="command-desc">停止当前采集会话，拉取 trace、logcat、报告和时间线文件。</span>
-                            </span>
-                        </div>
-                    </div>
-                    <button class="btn btn-danger command-action" id="perfStopBtn" onclick="perfStopTimer()" disabled>执行停止计时</button>
                 </div>
 
                 <div class="section-header" style="margin-top:18px;">
@@ -1675,7 +2316,7 @@
                         <input type="checkbox" id="perfBatchClearData" checked>
                         pm clear
                     </label>
-                    <button class="btn btn-primary" id="perfBatchBtn" onclick="perfRunBatch()" style="padding:8px 14px;font-size:13px;">批量启动测试</button>
+                    <button class="btn btn-primary perf-launch-action" id="perfBatchBtn" onclick="perfRunBatch()">批量启动测试</button>
                 </div>
 
                 <div class="status-text" id="perfStatusText"></div>
@@ -1710,7 +2351,7 @@
                 </div>
                 </section>
 
-                <section class="feature-section tone-slate">
+                <section class="feature-section perf-records-section tone-slate">
                 <div class="section-header" style="margin-top:20px;">
                     <span class="section-title">测试记录</span>
                 </div>
@@ -1741,6 +2382,10 @@
 
                 <div class="btn-group" style="margin-top:15px;">
                     <button class="btn btn-warning" onclick="perfCalcStats()">计算平均值</button>
+                    <div class="perf-stats-options" role="group" aria-label="平均值和聚合报告统计项">
+                        <label><input type="checkbox" id="perfStatsTotal" checked> TotalTime</label>
+                        <label><input type="checkbox" id="perfStatsManual" checked> 手动(ms)</label>
+                    </div>
                     <button class="btn btn-secondary" id="perfAggregateReportBtn" onclick="perfGenerateAggregateReport()" disabled>生成聚合测试报告</button>
                     <button class="btn btn-danger" onclick="perfClearRecords()">清除数据</button>
                 </div>
@@ -1806,16 +2451,8 @@
 
             <!-- 播放模式 -->
             <div id="play" class="tab-content">
-                <section class="feature-section tone-green">
+                <section class="feature-section play-device-section tone-blue">
                 <div class="section-header">
-                    <span class="section-title">播放模式</span>
-                </div>
-
-                <div class="alert alert-info">
-                    播放模式会依次播放已生成的语音文件，同时记录 ADB logcat 日志并在指定时间截图。
-                </div>
-
-                <div class="section-header" style="margin-top: 20px;">
                     <span class="section-title">目标设备</span>
                 </div>
 
@@ -1827,8 +2464,10 @@
                 </div>
 
                 <div id="playDeviceStatus" class="alert alert-info" style="margin-bottom: 15px;">当前播放设备: 未选择</div>
+                </section>
 
-                <div class="section-header" style="margin-top: 20px;">
+                <section class="feature-section play-directory-section tone-amber">
+                <div class="section-header">
                     <span class="section-title">播放目录</span>
                 </div>
 
@@ -1841,6 +2480,16 @@
                 </div>
 
                 <div id="playDirStatus" class="alert alert-info" style="margin-bottom: 15px;">当前播放目录: output (默认)</div>
+                </section>
+
+                <section class="feature-section play-run-section tone-green">
+                <div class="section-header">
+                    <span class="section-title">播放执行</span>
+                </div>
+
+                <div class="alert alert-info">
+                    依次播放已生成的语音文件，同时记录 ADB logcat 日志并按配置截图。
+                </div>
 
                 <div class="btn-group">
                     <button class="btn btn-success" id="playBtn" onclick="runPlay()">开始播放</button>
@@ -1866,7 +2515,7 @@
                 </div>
 
                 <div class="config-column narrow">
-                    <section class="feature-section tone-blue">
+                    <section class="feature-section config-engine-section tone-blue">
                         <div class="section-header">
                             <span class="section-title">语音引擎配置</span>
                         </div>
@@ -1881,7 +2530,7 @@
                         </div>
                     </section>
 
-                    <section class="feature-section tone-green">
+                    <section class="feature-section config-play-section tone-green">
                         <div class="section-header">
                             <span class="section-title">播放模式配置</span>
                         </div>
@@ -1892,7 +2541,7 @@
                         </div>
                     </section>
 
-                    <section class="feature-section tone-slate">
+                    <section class="feature-section config-file-section tone-slate">
                         <div class="section-header">
                             <span class="section-title">文件配置</span>
                         </div>
@@ -1913,7 +2562,7 @@
                 </div>
 
                 <div class="config-column wide">
-                    <section class="feature-section tone-violet">
+                    <section class="feature-section config-template-section tone-violet">
                         <div class="section-header">
                             <span class="section-title">语音模板配置</span>
                             <div class="field-help">$MAIN 代表主文本，必须且只能保留一个</div>
@@ -1929,7 +2578,7 @@
                         </div>
                     </section>
 
-                    <section class="feature-section tone-cyan">
+                    <section class="feature-section config-video-section tone-cyan">
                         <div class="section-header">
                             <span class="section-title">视频录制配置</span>
                         </div>
@@ -1965,6 +2614,8 @@
                     <span class="section-title">软件更新</span>
                 </div>
 
+                <div class="update-workspace">
+                <div>
                 <div class="alert alert-info" style="font-size:13px;">
                     默认从公网云服务器读取版本清单和更新包。下载校验完成后会自动更新并重启程序。
                 </div>
@@ -1977,7 +2628,9 @@
                         更新会覆盖程序文件，并保留 output、config.json、text.txt 及其他用户文件；安装失败时自动回滚。
                     </div>
                 </div>
+                </div>
 
+                <div>
                 <div class="alert alert-info" id="updateStatus" style="font-size:13px;white-space:pre-wrap;">当前版本: 加载中</div>
 
                 <div class="update-download-progress" id="updateDownloadProgress" hidden>
@@ -1994,6 +2647,17 @@
                     <button class="btn btn-primary" id="checkUpdateBtn" onclick="checkUpdate()">检查更新</button>
                     <button class="btn btn-success" id="downloadUpdateBtn" onclick="downloadUpdate()" disabled>下载更新包</button>
                     <button class="btn btn-secondary" id="openUpdateDirBtn" onclick="openUpdateDir()" disabled>打开下载目录</button>
+                    <button class="btn btn-secondary" id="updateHistoryBtn" onclick="toggleUpdateHistory()" aria-expanded="false">历史变更</button>
+                </div>
+                </div>
+                </div>
+
+                <div class="update-history-panel" id="updateHistoryPanel" hidden>
+                    <div class="update-history-header">
+                        <span class="update-history-title">最近一年变更</span>
+                        <span class="update-history-summary" id="updateHistorySummary"></span>
+                    </div>
+                    <div class="update-history-list" id="updateHistoryList" aria-live="polite"></div>
                 </div>
                 </section>
             </div>
@@ -2017,6 +2681,8 @@
         let activeDialogResolver = null;
         let pendingUpdate = null;
         let downloadedUpdateDir = '';
+        let updateHistoryEntries = [];
+        let updateHistoryLoadedUrl = '';
 
         function closeAppDialog() {
             const dialog = document.getElementById('appDialog');
@@ -2062,9 +2728,9 @@
                                onchange="updateTemplateSegment(${index}, 'text', this.value)"
                                ${isMain ? 'readonly style="background: #fff3e0; font-weight: bold;"' : ''}>
                         <div class="segment-actions">
-                            <button class="btn-move" onclick="moveTemplateSegment(${index}, -1)">↑</button>
-                            <button class="btn-move" onclick="moveTemplateSegment(${index}, 1)">↓</button>
-                            ${!isMain ? `<button class="btn-delete" onclick="deleteTemplateSegment(${index})">删除</button>` : ''}
+                            <button type="button" class="btn-move" title="上移" aria-label="上移" onclick="moveTemplateSegment(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button>
+                            <button type="button" class="btn-move" title="下移" aria-label="下移" onclick="moveTemplateSegment(${index}, 1)" ${index === currentTemplate.length - 1 ? 'disabled' : ''}>↓</button>
+                            ${!isMain ? `<button type="button" class="btn-delete" onclick="deleteTemplateSegment(${index})">删除</button>` : ''}
                         </div>
                     `;
                 } else {
@@ -2075,9 +2741,9 @@
                                onchange="updateTemplateSegment(${index}, 'seconds', parseFloat(this.value))">
                         <span style="color: #666;">秒</span>
                         <div class="segment-actions">
-                            <button class="btn-move" onclick="moveTemplateSegment(${index}, -1)">↑</button>
-                            <button class="btn-move" onclick="moveTemplateSegment(${index}, 1)">↓</button>
-                            <button class="btn-delete" onclick="deleteTemplateSegment(${index})">删除</button>
+                            <button type="button" class="btn-move" title="上移" aria-label="上移" onclick="moveTemplateSegment(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button>
+                            <button type="button" class="btn-move" title="下移" aria-label="下移" onclick="moveTemplateSegment(${index}, 1)" ${index === currentTemplate.length - 1 ? 'disabled' : ''}>↓</button>
+                            <button type="button" class="btn-delete" onclick="deleteTemplateSegment(${index})">删除</button>
                         </div>
                     `;
                 }
@@ -2136,6 +2802,9 @@
         // ===== 设备管理相关 =====
         let devSelectedApks = []; // 已选的 APK 文件路径
         let devRecording = false;
+        let devRecordingBusy = false;
+        const devCommandHistoryKey = 'voiceQa.adbCommandHistory.v1';
+        let devCommandHistory = devReadCommandHistory();
 
         // 连接设备
         async function devConnect() {
@@ -2306,23 +2975,45 @@
             }
         }
 
+        function devRenderRecordingControl() {
+            const button = document.getElementById('devRecordToggleBtn');
+            const deviceSelect = document.getElementById('devRecordDevice');
+            if (!button) return;
+
+            button.disabled = devRecordingBusy;
+            button.classList.toggle('btn-primary', !devRecording);
+            button.classList.toggle('btn-danger', devRecording);
+            if (devRecordingBusy) {
+                button.textContent = devRecording ? '正在停止并保存...' : '正在启动...';
+            } else {
+                button.textContent = devRecording ? '停止录屏并保存' : '开始录屏';
+            }
+            if (deviceSelect) {
+                deviceSelect.disabled = devRecording || devRecordingBusy;
+            }
+        }
+
         function devSetRecordingState(recording, statusText) {
             devRecording = recording;
-            const startBtn = document.getElementById('devStartRecordBtn');
-            const stopBtn = document.getElementById('devStopRecordBtn');
             const status = document.getElementById('devRecordStatus');
-            if (startBtn) startBtn.disabled = recording;
-            if (stopBtn) stopBtn.disabled = !recording;
             if (status && statusText) status.textContent = statusText;
+            devRenderRecordingControl();
+        }
+
+        function devToggleRecording() {
+            if (devRecordingBusy) return;
+            if (devRecording) {
+                devStopRecording();
+            } else {
+                devStartRecording();
+            }
         }
 
         async function devStartRecording() {
-            if (devRecording) return;
+            if (devRecording || devRecordingBusy) return;
             const serial = document.getElementById('devRecordDevice').value;
-            const startBtn = document.getElementById('devStartRecordBtn');
-            const stopBtn = document.getElementById('devStopRecordBtn');
-            if (startBtn) startBtn.disabled = true;
-            if (stopBtn) stopBtn.disabled = true;
+            devRecordingBusy = true;
+            devRenderRecordingControl();
             document.getElementById('devRecordStatus').textContent = '正在启动录屏...';
             devAppendOutput('开始录屏' + (serial ? '：' + serial : '，自动选择设备'), 'info');
             try {
@@ -2338,13 +3029,16 @@
             } catch (e) {
                 devSetRecordingState(false, '启动录屏失败');
                 devAppendOutput('启动录屏异常: ' + e, 'error');
+            } finally {
+                devRecordingBusy = false;
+                devRenderRecordingControl();
             }
         }
 
         async function devStopRecording() {
-            if (!devRecording) return;
-            const stopBtn = document.getElementById('devStopRecordBtn');
-            if (stopBtn) stopBtn.disabled = true;
+            if (!devRecording || devRecordingBusy) return;
+            devRecordingBusy = true;
+            devRenderRecordingControl();
             document.getElementById('devRecordStatus').textContent = '正在停止录屏并保存...';
             devAppendOutput('停止录屏并保存...', 'info');
             try {
@@ -2355,6 +3049,9 @@
             } catch (e) {
                 devSetRecordingState(false, '停止录屏失败');
                 devAppendOutput('停止录屏异常: ' + e, 'error');
+            } finally {
+                devRecordingBusy = false;
+                devRenderRecordingControl();
             }
         }
 
@@ -2507,8 +3204,116 @@
             }
         }
 
+        function devReadCommandHistory() {
+            try {
+                const stored = JSON.parse(localStorage.getItem(devCommandHistoryKey) || '[]');
+                if (!Array.isArray(stored)) return [];
+                return stored
+                    .filter(command => typeof command === 'string' && command.trim())
+                    .map(command => command.trim())
+                    .slice(0, 10);
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function devWriteCommandHistory() {
+            try {
+                localStorage.setItem(devCommandHistoryKey, JSON.stringify(devCommandHistory));
+            } catch (_) {
+                // 历史记录不可用时不影响 ADB 命令执行。
+            }
+        }
+
+        function devRememberCommand(command) {
+            const normalized = command.trim();
+            devCommandHistory = [normalized, ...devCommandHistory.filter(item => item !== normalized)].slice(0, 10);
+            devWriteCommandHistory();
+            devRenderCommandHistory();
+        }
+
+        function devRenderCommandHistory() {
+            const list = document.getElementById('devCommandHistoryList');
+            if (!list) return;
+            list.replaceChildren();
+            if (devCommandHistory.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'dev-command-history-empty';
+                empty.textContent = '暂无历史指令';
+                list.appendChild(empty);
+                return;
+            }
+
+            devCommandHistory.forEach(command => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'dev-command-history-item';
+                item.textContent = /^adb(?:\s|$)/i.test(command) ? command : 'adb ' + command;
+                item.title = '点击填充此指令';
+                item.addEventListener('click', () => devFillCommand(command));
+                list.appendChild(item);
+            });
+        }
+
+        function devToggleCommandHistory() {
+            const menu = document.getElementById('devCommandHistoryMenu');
+            const button = document.getElementById('devCommandHistoryBtn');
+            const willOpen = menu.hidden;
+            menu.hidden = !willOpen;
+            button.setAttribute('aria-expanded', String(willOpen));
+            if (willOpen) {
+                devClosePackageVersionEditor();
+                devRenderCommandHistory();
+            }
+        }
+
+        function devClearCommandHistory() {
+            devCommandHistory = [];
+            devWriteCommandHistory();
+            devRenderCommandHistory();
+        }
+
         function devFillCommand(command) {
-            document.getElementById('devCommandInput').value = command;
+            const input = document.getElementById('devCommandInput');
+            input.value = command;
+            input.focus();
+            const menu = document.getElementById('devCommandHistoryMenu');
+            const button = document.getElementById('devCommandHistoryBtn');
+            const packageEditor = document.getElementById('devPackageVersionEditor');
+            if (menu) menu.hidden = true;
+            if (button) button.setAttribute('aria-expanded', 'false');
+            if (packageEditor) packageEditor.hidden = true;
+        }
+
+        function devFillPackageVersionCommand() {
+            const logPackage = document.getElementById('devLogPackage').value.trim();
+            const component = document.getElementById('perfComponent').value.trim();
+            const selectedPackage = document.getElementById('perfPkgSelect').value;
+            const suggestion = logPackage || (component.includes('/') ? component.split('/')[0] : '') || (selectedPackage !== '__other__' ? selectedPackage : '');
+            const editor = document.getElementById('devPackageVersionEditor');
+            const input = document.getElementById('devPackageVersionInput');
+            editor.hidden = false;
+            input.value = suggestion;
+            input.focus();
+            input.select();
+            const historyMenu = document.getElementById('devCommandHistoryMenu');
+            if (historyMenu) historyMenu.hidden = true;
+        }
+
+        function devClosePackageVersionEditor() {
+            document.getElementById('devPackageVersionEditor').hidden = true;
+        }
+
+        function devApplyPackageVersionCommand() {
+            const packageName = document.getElementById('devPackageVersionInput').value.trim();
+            if (!/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(packageName)) {
+                alert('请输入有效的应用包名，例如 com.example.app');
+                return;
+            }
+
+            document.getElementById('devLogPackage').value = packageName;
+            devFillCommand(`shell "dumpsys package ${packageName} | grep -E 'versionCode=|versionName='"`);
+            devClosePackageVersionEditor();
         }
 
         async function devRunCommand() {
@@ -2523,6 +3328,7 @@
                 return;
             }
 
+            devRememberCommand(command);
             btn.disabled = true;
             btn.textContent = '执行中...';
             statusEl.textContent = '正在执行命令...';
@@ -2632,10 +3438,13 @@
         async function devLoadLogPackages() {
             const serial = devResolveLogSerial();
             const statusEl = document.getElementById('devLogStatus');
+            const button = document.getElementById('devLoadLogPackagesBtn');
             if (!serial) {
                 alert('请先选择目标设备');
                 return;
             }
+            button.disabled = true;
+            button.textContent = '加载中...';
             statusEl.textContent = '正在加载包名...';
             try {
                 const packages = await window.go.main.App.GetDevicePackages(serial);
@@ -2649,6 +3458,9 @@
                 statusEl.textContent = '已加载 ' + (packages || []).length + ' 个包名，可在应用包名输入框中搜索';
             } catch (e) {
                 statusEl.textContent = '加载包名失败: ' + e;
+            } finally {
+                button.disabled = false;
+                button.textContent = '加载包名';
             }
         }
 
@@ -2841,6 +3653,8 @@
         let perfAllPackages = [];
         let perfRecords = [];
         let perfTimerRunning = false;
+        let perfTimerAction = '';
+        let perfBatchRunning = false;
         let perfStartMs = 0;
         let perfCurrentLaunch = null;
         let perfLastResultDir = '';
@@ -3195,13 +4009,47 @@
             btn.textContent = '停止所有第三方应用';
         }
 
+        function perfSyncTimerControl() {
+            const button = document.getElementById('perfTimerToggleBtn');
+            const commandName = document.getElementById('perfTimerCommandName');
+            const commandDesc = document.getElementById('perfTimerCommandDesc');
+            if (!button || !commandName || !commandDesc) return;
+
+            const stopMode = perfTimerRunning && perfTimerAction !== 'start';
+            commandName.textContent = stopMode ? 'perfetto --stop / pull trace' : 'am start -W -n <component>';
+            commandDesc.textContent = stopMode
+                ? '停止当前采集会话，拉取 trace、logcat、报告和时间线文件。'
+                : '启动目标 Activity 并读取 ThisTime、TotalTime、WaitTime；启用 Perfetto 时会同步开始 trace 采集。';
+
+            button.disabled = !!perfTimerAction || perfBatchRunning;
+            button.classList.toggle('btn-primary', !stopMode);
+            button.classList.toggle('btn-danger', stopMode);
+            if (perfTimerAction === 'start') {
+                button.textContent = '正在启动...';
+            } else if (perfTimerAction === 'stop') {
+                button.textContent = '正在停止并保存...';
+            } else if (perfBatchRunning) {
+                button.textContent = '批量测试中...';
+            } else {
+                button.textContent = stopMode ? '执行停止计时' : '执行启动计时';
+            }
+        }
+
+        function perfToggleTimer() {
+            if (perfTimerAction || perfBatchRunning) return;
+            if (perfTimerRunning) {
+                perfStopTimer();
+            } else {
+                perfStartTimer();
+            }
+        }
+
         // 启动计时
         async function perfStartTimer() {
+            if (perfTimerRunning || perfTimerAction || perfBatchRunning) return;
             const params = perfGetParams();
             if (!params) return;
 
-            const startBtn = document.getElementById('perfStartBtn');
-            const stopBtn = document.getElementById('perfStopBtn');
             const statusText = document.getElementById('perfStatusText');
             const opts = {
                 enabled: document.getElementById('perfettoEnabled').checked,
@@ -3209,14 +4057,13 @@
                 bufferSizeMB: parseInt(document.getElementById('perfettoBufferSize').value || '64', 10)
             };
 
-            startBtn.disabled = true;
-
             // 记录开始时间并启动 Activity
             perfStartMs = Date.now();
             perfTimerRunning = true;
+            perfTimerAction = 'start';
             perfCurrentLaunch = null;
             perfRenderCapability(null);
-            stopBtn.disabled = true;
+            perfSyncTimerControl();
             const startTimeStr = perfFormatTime(perfStartMs);
             statusText.textContent = '计时中... 开始时间: ' + startTimeStr;
             perfAppendOutput('开始时间: ' + startTimeStr, 'info');
@@ -3227,10 +4074,7 @@
 
             try {
                 const result = await window.go.main.App.PerfStartLaunchTrace(params.serial, params.component, opts);
-                perfCurrentLaunch = result;
-                if (perfTimerRunning) {
-                    stopBtn.disabled = false;
-                }
+                if (perfTimerRunning) perfCurrentLaunch = result;
                 if (result.resultDir) {
                     perfLastResultDir = result.resultDir;
                     document.getElementById('perfOpenResultBtn').disabled = false;
@@ -3251,44 +4095,38 @@
                 }
                 if (!result.success && !result.traceEnabled) {
                     perfTimerRunning = false;
-                    stopBtn.disabled = true;
-                    startBtn.disabled = false;
+                    statusText.textContent = result.message || '启动计时失败';
                 }
             } catch (e) {
                 perfAppendOutput('启动失败: ' + e, 'error');
                 perfTimerRunning = false;
-                stopBtn.disabled = true;
-                startBtn.disabled = false;
-            }
-
-            if (!perfTimerRunning) {
-                startBtn.disabled = false;
+                statusText.textContent = '启动计时失败';
+            } finally {
+                if (perfTimerAction === 'start') perfTimerAction = '';
+                perfSyncTimerControl();
             }
         }
 
         // 停止计时
         async function perfStopTimer() {
-            if (!perfTimerRunning) return;
-            perfTimerRunning = false;
+            if (!perfTimerRunning || perfTimerAction || perfBatchRunning) return;
+            perfTimerAction = 'stop';
+            perfSyncTimerControl();
 
             const stopMs = Date.now();
             const stopTimeStr = perfFormatTime(stopMs);
             const duration = stopMs - perfStartMs;
+            const currentLaunch = perfCurrentLaunch;
 
             document.getElementById('perfStatusText').textContent =
                 '耗时: ' + duration + ' ms | 停止时间: ' + stopTimeStr;
-            document.getElementById('perfStopBtn').disabled = true;
 
             perfAppendOutput('停止时间: ' + stopTimeStr, 'info');
             perfAppendOutput('耗时: ' + duration + ' ms', 'success');
 
-            const stopBtn = document.getElementById('perfStopBtn');
-            const startBtn = document.getElementById('perfStartBtn');
-            stopBtn.disabled = true;
-
             let stopResult = null;
             try {
-                perfAppendOutput((perfCurrentLaunch && perfCurrentLaunch.traceEnabled) ? '正在停止 Perfetto 并拉取 trace...' : '正在结束启动测试并保存 logcat...', 'info');
+                perfAppendOutput((currentLaunch && currentLaunch.traceEnabled) ? '正在停止 Perfetto 并拉取 trace...' : '正在结束启动测试并保存 logcat...', 'info');
                 stopResult = await window.go.main.App.PerfStopLaunchTrace();
                 if (stopResult.resultDir) {
                     perfLastResultDir = stopResult.resultDir;
@@ -3304,7 +4142,7 @@
                     perfAppendOutput(stopResult.traceWarning, 'error');
                 }
                 perfAppendStopArtifacts(stopResult);
-                if (perfCurrentLaunch && perfCurrentLaunch.traceEnabled) {
+                if (currentLaunch && currentLaunch.traceEnabled) {
                     perfAppendCapability(stopResult.capability);
                 }
                 perfAppendOutput(stopResult.message, stopResult.success ? 'success' : 'error');
@@ -3316,9 +4154,9 @@
                 startTime: perfStartMs,
                 stopTime: stopMs,
                 duration: duration,
-                thisTimeMs: perfCurrentLaunch ? perfCurrentLaunch.thisTimeMs : 0,
-                totalTimeMs: perfCurrentLaunch ? perfCurrentLaunch.totalTimeMs : 0,
-                waitTimeMs: perfCurrentLaunch ? perfCurrentLaunch.waitTimeMs : 0,
+                thisTimeMs: currentLaunch ? currentLaunch.thisTimeMs : 0,
+                totalTimeMs: currentLaunch ? currentLaunch.totalTimeMs : 0,
+                waitTimeMs: currentLaunch ? currentLaunch.waitTimeMs : 0,
                 traceFile: stopResult ? stopResult.traceFile : '',
                 logcatFile: stopResult ? stopResult.logcatFile : '',
                 reportFile: stopResult ? stopResult.reportFile : '',
@@ -3326,15 +4164,17 @@
                 traceSizeBytes: stopResult ? stopResult.traceSizeBytes : 0,
                 traceAnalyzable: stopResult ? stopResult.traceAnalyzable : false,
                 traceWarning: stopResult ? stopResult.traceWarning : '',
-                resultDir: stopResult ? stopResult.resultDir : (perfCurrentLaunch ? perfCurrentLaunch.resultDir : '')
+                resultDir: stopResult ? stopResult.resultDir : (currentLaunch ? currentLaunch.resultDir : '')
             });
             perfRenderRecords();
             perfCurrentLaunch = null;
-            startBtn.disabled = false;
+            perfTimerRunning = false;
+            perfTimerAction = '';
+            perfSyncTimerControl();
         }
 
         async function perfRunBatch() {
-            if (perfTimerRunning) {
+            if (perfTimerRunning || perfTimerAction || perfBatchRunning) {
                 alert('当前单次启动计时仍在运行，请先停止');
                 return;
             }
@@ -3342,8 +4182,6 @@
             if (!params) return;
 
             const batchBtn = document.getElementById('perfBatchBtn');
-            const startBtn = document.getElementById('perfStartBtn');
-            const stopBtn = document.getElementById('perfStopBtn');
             const statusText = document.getElementById('perfStatusText');
             const opts = {
                 count: parseInt(document.getElementById('perfBatchCount').value || '5', 10),
@@ -3359,8 +4197,8 @@
             };
 
             batchBtn.disabled = true;
-            startBtn.disabled = true;
-            stopBtn.disabled = true;
+            perfBatchRunning = true;
+            perfSyncTimerControl();
             statusText.textContent = '批量启动测试中...';
             perfRenderCapability(null);
             perfAppendOutput('开始批量启动测试：' + opts.count + ' 次，component=' + params.component, 'info');
@@ -3371,7 +4209,6 @@
                 if (result.resultDir) {
                     perfLastResultDir = result.resultDir;
                     document.getElementById('perfOpenResultBtn').disabled = false;
-                    document.getElementById('perfAggregateReportBtn').disabled = false;
                     perfAppendOutput('批量结果目录: ' + result.resultDir, 'info');
                 }
                 if (result.runs && result.runs.length) {
@@ -3387,7 +4224,7 @@
                     perfRenderRecords();
                     perfCalcStats();
                 }
-                const summary = '批量完成: ' + result.successes + '/' + result.count + ' 成功，平均 TotalTime=' + (result.meanTotalMs || 0).toFixed(2) + ' ms，标准方差=' + (result.stdTotalMs || 0).toFixed(2) + ' ms';
+                const summary = '批量完成: ' + result.successes + '/' + result.count + ' 成功，平均 TotalTime=' + (result.meanTotalMs || 0).toFixed(2) + ' ms，标准差=' + (result.stdTotalMs || 0).toFixed(2) + ' ms';
                 statusText.textContent = summary;
                 perfAppendOutput(summary, result.success ? 'success' : 'error');
                 if (!result.success && result.message) {
@@ -3398,7 +4235,8 @@
                 perfAppendOutput('批量启动测试失败: ' + e, 'error');
             } finally {
                 batchBtn.disabled = false;
-                startBtn.disabled = false;
+                perfBatchRunning = false;
+                perfSyncTimerControl();
             }
         }
 
@@ -3424,16 +4262,25 @@
         }
 
         async function perfGenerateAggregateReport() {
-            if (!perfLastResultDir) {
-                alert('请先完成一次批量启动测试');
+            const resultDirs = perfReportResultDirs();
+            if (resultDirs.length === 0) {
+                alert('当前测试记录没有可用于生成报告的结果目录');
+                return;
+            }
+            const includeTotal = document.getElementById('perfStatsTotal').checked;
+            const includeManual = document.getElementById('perfStatsManual').checked;
+            if (!includeTotal && !includeManual) {
+                alert('请至少选择一个报告统计项');
                 return;
             }
             const btn = document.getElementById('perfAggregateReportBtn');
             btn.disabled = true;
-            perfAppendOutput('正在生成聚合测试报告...', 'info');
+            perfAppendOutput('正在基于当前 ' + resultDirs.length + ' 条测试记录生成聚合报告...', 'info');
             try {
-                const result = await window.go.main.App.GeneratePerfBatchReport(perfLastResultDir);
+                const result = await window.go.main.App.GeneratePerfRecordsReport(resultDirs, includeTotal, includeManual);
                 if (result.success) {
+                    perfLastResultDir = result.resultDir;
+                    document.getElementById('perfOpenResultBtn').disabled = false;
                     perfAppendOutput(result.message, 'success');
                     perfAppendOutput('聚合报告路径: ' + result.reportFile, 'success');
                 } else {
@@ -3442,7 +4289,7 @@
             } catch (e) {
                 perfAppendOutput('生成聚合报告异常: ' + e, 'error');
             } finally {
-                btn.disabled = false;
+                perfSyncAggregateReportState();
             }
         }
 
@@ -3576,6 +4423,7 @@
             const tbody = document.getElementById('perfRecordsBody');
             if (perfRecords.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="8" style="padding:15px;text-align:center;color:#999;">暂无记录</td></tr>';
+                perfSyncAggregateReportState();
                 return;
             }
             tbody.innerHTML = perfRecords.map((r, i) => {
@@ -3590,21 +4438,56 @@
                     <td style="padding:8px 10px;font-size:12px;">${perfTraceCellHtml(r)}</td>
                 </tr>`;
             }).join('');
+            perfSyncAggregateReportState();
         }
 
-        // 计算平均值和标准方差
+        function perfReportResultDirs() {
+            return Array.from(new Set(perfRecords
+                .map(record => String(record.resultDir || '').trim())
+                .filter(Boolean)));
+        }
+
+        function perfSyncAggregateReportState() {
+            document.getElementById('perfAggregateReportBtn').disabled = perfReportResultDirs().length === 0;
+        }
+
+        function perfMetricStats(values) {
+            const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+            const variance = values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length;
+            return { mean, std: Math.sqrt(variance) };
+        }
+
+        // 计算平均值和标准差
         function perfCalcStats() {
             if (perfRecords.length === 0) {
                 alert('暂无测试记录');
                 return;
             }
 
-            const durations = perfRecords.map(r => r.totalTimeMs || r.duration);
-            const mean = durations.reduce((a, b) => a + b, 0) / durations.length;
-            const variance = durations.reduce((sum, d) => sum + Math.pow(d - mean, 2), 0) / durations.length;
-            const std = Math.sqrt(variance);
+            const metrics = [];
+            if (document.getElementById('perfStatsTotal').checked) {
+                metrics.push({ label: 'TotalTime', field: 'totalTimeMs' });
+            }
+            if (document.getElementById('perfStatsManual').checked) {
+                metrics.push({ label: '手动(ms)', field: 'duration' });
+            }
+            if (metrics.length === 0) {
+                alert('请至少选择一个统计项');
+                return;
+            }
 
-            const html = `共 <b>${perfRecords.length}</b> 次测试，按 TotalTime 优先统计，平均 <b>${mean.toFixed(2)}</b> ms，标准方差 <b>${std.toFixed(2)}</b> ms`;
+            const summaries = metrics.map(metric => {
+                const values = perfRecords
+                    .map(record => Number(record[metric.field]))
+                    .filter(value => Number.isFinite(value) && value > 0);
+                if (values.length === 0) {
+                    return `<b>${metric.label}</b>：无有效数据`;
+                }
+                const stats = perfMetricStats(values);
+                return `<b>${metric.label}</b>：有效 ${values.length} 条，平均 <b>${stats.mean.toFixed(2)}</b> ms，标准差 <b>${stats.std.toFixed(2)}</b> ms`;
+            });
+
+            const html = `共 <b>${perfRecords.length}</b> 条记录；${summaries.join('；')}`;
 
             document.getElementById('perfStatsArea').style.display = 'block';
             document.getElementById('perfStatsText').innerHTML = html;
@@ -3612,12 +4495,17 @@
 
         // 清除数据
         function perfClearRecords() {
+            if (perfTimerRunning || perfTimerAction || perfBatchRunning) {
+                alert('测试正在运行，请先停止后再清除数据');
+                return;
+            }
             perfRecords = [];
             perfCurrentLaunch = null;
+            perfLastResultDir = '';
             perfRenderRecords();
             document.getElementById('perfStatsArea').style.display = 'none';
             document.getElementById('perfStatusText').textContent = '';
-            document.getElementById('perfAggregateReportBtn').disabled = true;
+            document.getElementById('perfOpenResultBtn').disabled = true;
             perfAppendOutput('测试记录已清除', 'info');
         }
 
@@ -3895,6 +4783,125 @@
 
         function useUpdateManifestUrl(url) {
             document.getElementById('updateManifestUrl').value = url;
+            updateHistoryEntries = [];
+            updateHistoryLoadedUrl = '';
+            setUpdateHistoryPanelOpen(false);
+        }
+
+        function getUpdateHistoryEntries(result) {
+            if (Array.isArray(result?.history) && result.history.length > 0) {
+                return result.history;
+            }
+
+            const notes = String(result?.notes || '')
+                .split(/\r?\n/)
+                .map(note => note.trim().replace(/^\d+[.、)]\s*/, ''))
+                .filter(Boolean);
+            if (!result?.latestVersion || notes.length === 0) {
+                return [];
+            }
+            return [{ version: result.latestVersion, date: '', notes }];
+        }
+
+        function renderUpdateHistory(entries) {
+            const list = document.getElementById('updateHistoryList');
+            const summary = document.getElementById('updateHistorySummary');
+            if (!list || !summary) return;
+
+            list.replaceChildren();
+            const normalized = Array.isArray(entries) ? entries : [];
+            summary.textContent = normalized.length > 0 ? `共 ${normalized.length} 个版本` : '';
+            if (normalized.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'update-history-empty';
+                empty.textContent = '版本清单中暂无历史变更记录。';
+                list.appendChild(empty);
+                return;
+            }
+
+            normalized.forEach(entry => {
+                const row = document.createElement('article');
+                row.className = 'update-history-entry';
+
+                const meta = document.createElement('div');
+                const version = document.createElement('div');
+                version.className = 'update-history-version';
+                version.textContent = entry.version || '未标注版本';
+                const date = document.createElement('div');
+                date.className = 'update-history-date';
+                date.textContent = entry.date || '';
+                meta.append(version, date);
+
+                const notes = document.createElement('ul');
+                notes.className = 'update-history-notes';
+                const noteItems = Array.isArray(entry.notes) ? entry.notes : [];
+                noteItems.forEach(item => {
+                    const note = document.createElement('li');
+                    note.textContent = String(item || '').trim();
+                    if (note.textContent) notes.appendChild(note);
+                });
+                if (!notes.childElementCount) {
+                    const note = document.createElement('li');
+                    note.textContent = '未提供变更说明';
+                    notes.appendChild(note);
+                }
+
+                row.append(meta, notes);
+                list.appendChild(row);
+            });
+        }
+
+        function setUpdateHistoryPanelOpen(open) {
+            const panel = document.getElementById('updateHistoryPanel');
+            const button = document.getElementById('updateHistoryBtn');
+            if (!panel || !button) return;
+            panel.hidden = !open;
+            button.setAttribute('aria-expanded', String(open));
+            button.textContent = open ? '收起历史' : '历史变更';
+        }
+
+        async function toggleUpdateHistory() {
+            const panel = document.getElementById('updateHistoryPanel');
+            const button = document.getElementById('updateHistoryBtn');
+            if (!panel || !button) return;
+            if (!panel.hidden) {
+                setUpdateHistoryPanelOpen(false);
+                return;
+            }
+
+            setUpdateHistoryPanelOpen(true);
+            const manifestUrl = document.getElementById('updateManifestUrl').value.trim();
+            if (updateHistoryLoadedUrl === manifestUrl && updateHistoryEntries.length > 0) {
+                renderUpdateHistory(updateHistoryEntries);
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = '加载中...';
+            const list = document.getElementById('updateHistoryList');
+            list.replaceChildren();
+            const loading = document.createElement('div');
+            loading.className = 'update-history-empty';
+            loading.textContent = '正在读取历史变更...';
+            list.appendChild(loading);
+            try {
+                const result = await window.go.main.App.CheckUpdate(manifestUrl);
+                if (!result.success) {
+                    throw new Error(result.message || '读取版本清单失败');
+                }
+                updateHistoryEntries = getUpdateHistoryEntries(result);
+                updateHistoryLoadedUrl = manifestUrl;
+                renderUpdateHistory(updateHistoryEntries);
+            } catch (e) {
+                updateHistoryEntries = [];
+                updateHistoryLoadedUrl = '';
+                renderUpdateHistory([]);
+                document.getElementById('updateHistorySummary').textContent = '读取失败';
+                list.firstElementChild.textContent = '历史变更读取失败: ' + e;
+            } finally {
+                button.disabled = false;
+                button.textContent = '收起历史';
+            }
         }
 
         async function checkUpdate() {
@@ -3918,6 +4925,11 @@
                 }
                 if (badgeCheckId === updateBadgeCheckId) {
                     setUpdateBadge(result.hasUpdate, result.latestVersion);
+                }
+                updateHistoryEntries = getUpdateHistoryEntries(result);
+                updateHistoryLoadedUrl = manifestUrl;
+                if (!document.getElementById('updateHistoryPanel').hidden) {
+                    renderUpdateHistory(updateHistoryEntries);
                 }
                 const lines = [
                     '当前版本: ' + result.currentVersion,
@@ -4167,10 +5179,13 @@
             });
 
             window.runtime.EventsOn('perfetto-timeout', (data) => {
+                if (!perfTimerRunning || perfTimerAction === 'stop') return;
                 const stopMs = Date.now();
+                const currentLaunch = perfCurrentLaunch;
                 perfTimerRunning = false;
-                document.getElementById('perfStartBtn').disabled = false;
-                document.getElementById('perfStopBtn').disabled = true;
+                perfTimerAction = '';
+                perfCurrentLaunch = null;
+                perfSyncTimerControl();
                 if (data.resultDir) {
                     perfLastResultDir = data.resultDir;
                     document.getElementById('perfOpenResultBtn').disabled = false;
@@ -4190,14 +5205,14 @@
                 if (data.message) {
                     perfAppendOutput(data.message, data.success ? 'success' : 'error');
                 }
-                if (perfCurrentLaunch) {
+                if (currentLaunch) {
                     perfRecords.push({
                         startTime: perfStartMs,
                         stopTime: stopMs,
                         duration: stopMs - perfStartMs,
-                        thisTimeMs: perfCurrentLaunch.thisTimeMs || 0,
-                        totalTimeMs: perfCurrentLaunch.totalTimeMs || 0,
-                        waitTimeMs: perfCurrentLaunch.waitTimeMs || 0,
+                        thisTimeMs: currentLaunch.thisTimeMs || 0,
+                        totalTimeMs: currentLaunch.totalTimeMs || 0,
+                        waitTimeMs: currentLaunch.waitTimeMs || 0,
                         traceFile: data.traceFile || '',
                         logcatFile: data.logcatFile || '',
                         reportFile: data.reportFile || '',
@@ -4205,9 +5220,8 @@
                         traceSizeBytes: data.traceSizeBytes || 0,
                         traceAnalyzable: !!data.traceAnalyzable,
                         traceWarning: data.traceWarning || '',
-                        resultDir: data.resultDir || perfCurrentLaunch.resultDir || ''
+                        resultDir: data.resultDir || currentLaunch.resultDir || ''
                     });
-                    perfCurrentLaunch = null;
                     perfRenderRecords();
                 }
             });
@@ -4602,6 +5616,13 @@
             reloadConfigPanel();
             loadPlayDir();
             initUpdatePanel();
+            devRenderRecordingControl();
+            devRenderCommandHistory();
+            perfSyncTimerControl();
+            document.getElementById('devPackageVersionInput').addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') devApplyPackageVersionCommand();
+                if (event.key === 'Escape') devClosePackageVersionEditor();
+            });
 
             // 监听播放目录下拉框变化
             document.getElementById('playDirSelect').addEventListener('change', onPlayDirChange);
