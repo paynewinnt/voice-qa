@@ -901,6 +901,152 @@
             color: var(--text-muted);
         }
 
+        .perf-component-hint {
+            margin-top: 6px;
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+
+        .perf-component-hint.success {
+            color: #19734a;
+        }
+
+        .perf-component-hint.error {
+            color: #b4232f;
+        }
+
+        .perf-component-hint.warning {
+            color: #9a5b00;
+        }
+
+        .perf-component-heading {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px 14px;
+            margin-bottom: 5px;
+        }
+
+        .perf-component-heading > label:first-child {
+            margin: 0;
+        }
+
+        .perf-component-picker {
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) minmax(180px, 0.85fr) auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .perf-component-picker > select,
+        .perf-component-picker > input {
+            width: 100%;
+            min-width: 0;
+        }
+
+        .perf-component-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px 10px;
+            margin-top: 7px;
+        }
+
+        .perf-component-actions .btn {
+            min-height: 32px;
+            padding: 6px 11px;
+            font-size: 12px;
+        }
+
+        .perf-verify-option,
+        .perf-verify-wait {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        #perf .perf-verify-wait input {
+            width: 72px;
+            min-height: 30px;
+            padding: 4px 6px !important;
+        }
+
+        .perf-component-details {
+            max-height: 112px;
+            margin-top: 6px;
+            padding: 7px 9px;
+            overflow: auto;
+            border: 1px solid #dce3ed;
+            border-radius: 6px;
+            background: #f7f9fc;
+            color: #30425c;
+            font-size: 11px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .perf-intent-config {
+            margin-top: 7px;
+            padding: 8px;
+            border: 1px solid #dce3ed;
+            border-radius: 6px;
+            background: #f8fafc;
+        }
+
+        .perf-intent-config[hidden] {
+            display: none;
+        }
+
+        .perf-intent-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 0;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .perf-intent-fields {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 7px;
+        }
+
+        .perf-intent-fields[hidden] {
+            display: none;
+        }
+
+        .perf-intent-fields .form-group {
+            min-width: 0;
+            margin-bottom: 0;
+        }
+
+        .perf-intent-data,
+        .perf-launch-preview {
+            grid-column: 1 / -1;
+        }
+
+        .perf-launch-preview {
+            padding: 6px 8px;
+            border: 1px solid #dce3ed;
+            border-radius: 6px;
+            background: #f7f9fc;
+            color: #30425c;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+
         .command-action {
             min-width: 82px;
             align-self: stretch;
@@ -1262,7 +1408,7 @@
         }
 
         #perf .perf-target-section {
-            grid-column: span 4;
+            grid-column: span 5;
         }
 
         #perf .perf-control-section {
@@ -1270,10 +1416,14 @@
         }
 
         #perf .perf-timing-section {
-            grid-column: span 5;
+            grid-column: span 4;
         }
 
         #perf .perf-records-section {
+            grid-column: 1 / -1;
+        }
+
+        #perf .perf-overall-section {
             grid-column: 1 / -1;
         }
 
@@ -1335,6 +1485,147 @@
         .perf-records-section .table-shell {
             max-height: 190px;
             overflow-y: auto;
+        }
+
+        .overall-perf-config-grid {
+            display: grid;
+            grid-template-columns: minmax(240px, 3fr) minmax(380px, 5fr) minmax(260px, 4fr);
+            border-top: 1px solid #e3e8f0;
+            border-bottom: 1px solid #e3e8f0;
+        }
+
+        .overall-perf-config-block {
+            min-width: 0;
+            padding: 10px 12px;
+            border-right: 1px solid #e3e8f0;
+        }
+
+        .overall-perf-config-block:first-child {
+            padding-left: 0;
+        }
+
+        .overall-perf-config-block:last-child {
+            padding-right: 0;
+            border-right: 0;
+        }
+
+        .overall-perf-block-title {
+            margin-bottom: 8px;
+            color: #31435f;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .overall-perf-inline-fields {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .overall-perf-device-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 5px 8px;
+            max-height: 94px;
+            overflow: auto;
+            padding: 6px 0 2px;
+        }
+
+        .overall-perf-device-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 12px;
+        }
+
+        .overall-perf-device-option span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #perfOverallScenarios {
+            width: 100%;
+            height: 172px;
+            min-height: 120px;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            resize: vertical;
+            font: 12px/1.45 Consolas, Monaco, monospace;
+            color: #17233a;
+        }
+
+        .overall-perf-threshold-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px 8px;
+        }
+
+        .overall-perf-threshold-grid .form-group,
+        .overall-perf-config-block .form-group {
+            margin-bottom: 7px;
+        }
+
+        .overall-perf-threshold-grid label,
+        .overall-perf-config-block label {
+            font-size: 12px;
+        }
+
+        .overall-perf-action-bar {
+            display: grid;
+            grid-template-columns: auto minmax(160px, 1fr) minmax(280px, 2fr);
+            gap: 10px;
+            align-items: center;
+            padding-top: 10px;
+        }
+
+        .overall-perf-progress {
+            min-width: 0;
+        }
+
+        .overall-perf-progress-track {
+            height: 8px;
+            overflow: hidden;
+            border-radius: 4px;
+            background: #e6ebf2;
+        }
+
+        .overall-perf-progress-inner {
+            width: 0;
+            height: 100%;
+            background: #14805e;
+            transition: width 0.2s ease;
+        }
+
+        .overall-perf-progress-label {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 4px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .overall-perf-result {
+            margin-top: 10px;
+        }
+
+        .overall-perf-result[hidden] {
+            display: none;
+        }
+
+        .overall-perf-result .table-shell {
+            max-height: 220px;
+            overflow: auto;
+        }
+
+        #perfOverallOutput.output-console.active {
+            max-height: 180px;
+            margin-top: 8px;
+            resize: vertical;
         }
 
         #play .play-device-section,
@@ -1487,6 +1778,24 @@
                 grid-column: span 6;
             }
 
+            .overall-perf-config-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .overall-perf-config-block:nth-child(2) {
+                border-right: 0;
+            }
+
+            .overall-perf-config-block:last-child {
+                grid-column: 1 / -1;
+                padding-left: 0;
+                border-top: 1px solid #e3e8f0;
+            }
+
+            .overall-perf-threshold-grid {
+                grid-template-columns: repeat(5, minmax(0, 1fr));
+            }
+
             .dev-log-filter-grid {
                 grid-template-columns: repeat(3, minmax(0, 1fr));
             }
@@ -1529,6 +1838,14 @@
             .dev-device-workspace,
             .update-workspace {
                 grid-template-columns: 1fr;
+            }
+
+            .overall-perf-action-bar {
+                grid-template-columns: auto minmax(0, 1fr);
+            }
+
+            .overall-perf-progress {
+                grid-column: 1 / -1;
             }
 
             .dev-log-workspace .analysis-panel {
@@ -1577,6 +1894,21 @@
                 gap: 12px;
             }
 
+            .overall-perf-config-grid,
+            .overall-perf-threshold-grid,
+            .overall-perf-action-bar {
+                grid-template-columns: 1fr;
+            }
+
+            .overall-perf-config-block,
+            .overall-perf-config-block:first-child,
+            .overall-perf-config-block:last-child {
+                grid-column: auto;
+                padding: 10px 0;
+                border-top: 1px solid #e3e8f0;
+                border-right: 0;
+            }
+
             .feature-section,
             .feature-section.half,
             .feature-section.two-thirds,
@@ -1615,6 +1947,25 @@
             .form-row-2 {
                 grid-template-columns: 1fr;
                 gap: 0;
+            }
+
+            .perf-component-picker {
+                grid-template-columns: minmax(0, 1fr) auto;
+            }
+
+            .perf-component-picker > select {
+                grid-column: 1;
+                grid-row: 1;
+            }
+
+            .perf-component-picker > .btn {
+                grid-column: 2;
+                grid-row: 1;
+            }
+
+            .perf-component-picker > input {
+                grid-column: 1 / -1;
+                grid-row: 2;
             }
 
             .perf-capability-grid {
@@ -1879,7 +2230,7 @@
         <div class="card">
             <div class="tabs">
                 <button class="tab active" data-tab="devmgr">设备管理</button>
-                <button class="tab" data-tab="perf">启动时间测试</button>
+                <button class="tab" data-tab="perf">性能测试</button>
                 <button class="tab" data-tab="generate">生成语音</button>
                 <button class="tab" data-tab="play">播放模式</button>
                 <button class="tab" data-tab="config">配置设置</button>
@@ -1962,7 +2313,7 @@
                 <div id="devApkList" style="margin-bottom:10px;"></div>
 
                 <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                    <button class="btn btn-secondary" onclick="devSelectApks()">选择 APK 文件</button>
+                    <button class="btn btn-secondary" id="devSelectApksBtn" onclick="devSelectApks()">选择 APK 文件</button>
                     <button class="btn btn-primary" id="devInstallBtn" onclick="devInstallApks()" disabled>安装 APK</button>
                 </div>
 
@@ -2169,15 +2520,15 @@
                 </section>
             </div>
 
-            <!-- 启动时间测试 -->
+            <!-- 性能测试 -->
             <div id="perf" class="tab-content">
                 <section class="feature-section perf-target-section tone-blue">
                 <div class="section-header">
-                    <span class="section-title">测试目标</span>
+                    <span class="section-title">启动性能目标</span>
                 </div>
 
                 <div style="display:flex;gap:10px;align-items:center;">
-                    <select id="perfDeviceSelect" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+                    <select id="perfDeviceSelect" onchange="perfOnPerformanceDeviceChange()" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
                         <option value="">-- 请先在"设备管理"中连接设备 --</option>
                     </select>
                     <button class="btn btn-secondary" onclick="perfRefreshDevices()" style="padding:8px 14px;font-size:13px;">刷新</button>
@@ -2201,16 +2552,47 @@
                 </div>
 
                 <div class="form-group" style="margin-top:15px;">
-                    <label>完整 Component 名称</label>
-                    <div style="display:flex;gap:10px;">
+                    <div class="perf-component-heading">
+                        <label for="perfComponentSelect">完整 Component 名称（按匹配度排序）</label>
+                        <label class="perf-intent-toggle">
+                            <input type="checkbox" id="perfIntentEnabled" onchange="perfToggleIntentOptions()">
+                            Intent / Deep Link 启动
+                        </label>
+                    </div>
+                    <div class="perf-component-picker">
                         <select id="perfComponentSelect" class="perf-command-select" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;" onchange="perfOnComponentSelect()">
                             <option value="">-- 选择或手动输入 --</option>
                             <option value="zjiptv.mds/yanhua.tv.app.module.main.MainActivity">zjiptv.mds/yanhua.tv.app.module.main.MainActivity</option>
                             <option value="com.telecom.video/.activity.MainActivity">com.telecom.video/.activity.MainActivity</option>
                         </select>
-                        <button class="btn btn-secondary" onclick="perfRefreshComponents()" style="padding:8px 14px;font-size:13px;">刷新</button>
+                        <input type="text" id="perfComponent" placeholder="手动输入 Component" oninput="perfOnComponentInput()" style="padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
+                        <button class="btn btn-secondary" onclick="perfRefreshComponents()" style="padding:8px 14px;font-size:13px;">智能匹配</button>
                     </div>
-                    <input type="text" id="perfComponent" placeholder="或手动输入 Component 名称" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;margin-top:8px;">
+                    <div class="perf-component-actions">
+                        <button class="btn btn-secondary" id="perfDeepScanBtn" onclick="perfDeepScanComponents()">深度扫描</button>
+                        <button class="btn btn-primary" id="perfVerifyLaunchBtn" onclick="perfVerifyLaunch()">验证入口</button>
+                        <label class="perf-verify-option"><input type="checkbox" id="perfVerifyForceStop" checked> 验证前 force-stop</label>
+                        <label class="perf-verify-wait">启动后等待 <input type="number" id="perfVerifyWaitMs" min="300" max="10000" step="100" value="1500"> ms</label>
+                    </div>
+                    <div id="perfComponentHint" class="perf-component-hint">选择包名后，将综合当前 Intent、Launcher 和 Activity 清单给出候选。</div>
+                    <div id="perfComponentDetails" class="perf-component-details" hidden></div>
+                    <div class="perf-intent-config" id="perfIntentConfig" hidden>
+                        <div class="perf-intent-fields" id="perfIntentFields" hidden>
+                            <div class="form-group">
+                                <label for="perfIntentAction">Action</label>
+                                <input type="text" id="perfIntentAction" value="android.intent.action.VIEW" oninput="perfOnIntentCriteriaChange()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="form-group">
+                                <label for="perfIntentCategories">Category（逗号分隔）</label>
+                                <input type="text" id="perfIntentCategories" value="android.intent.category.BROWSABLE" oninput="perfOnIntentCriteriaChange()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="form-group perf-intent-data">
+                                <label for="perfIntentData">Data URI</label>
+                                <input type="text" id="perfIntentData" placeholder="aiquestion://open_page" oninput="perfOnIntentCriteriaChange()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="perf-launch-preview" id="perfLaunchPreview"></div>
+                        </div>
+                    </div>
                 </div>
                 </section>
 
@@ -2257,6 +2639,10 @@
                 </div>
 
                 <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                        <input type="checkbox" id="perfSingleForceStop" checked onchange="perfSyncTimerControl()">
+                        启动前 force-stop（冷启动）
+                    </label>
                     <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
                         <input type="checkbox" id="perfettoEnabled">
                         启用 Perfetto
@@ -2353,14 +2739,15 @@
 
                 <section class="feature-section perf-records-section tone-slate">
                 <div class="section-header" style="margin-top:20px;">
-                    <span class="section-title">测试记录</span>
+                    <span class="section-title">启动测试记录</span>
                 </div>
 
                 <div class="table-shell">
-                    <table style="width:100%;border-collapse:collapse;font-size:13px;" id="perfRecordsTable">
+                    <table style="width:100%;min-width:1100px;border-collapse:collapse;font-size:13px;" id="perfRecordsTable">
                         <thead>
                             <tr style="background:#f5f5f5;">
-                                <th style="padding:10px;text-align:left;border-bottom:1px solid #ddd;">#</th>
+                                <th style="padding:10px;text-align:left;border-bottom:1px solid #ddd;"><input type="checkbox" id="perfSelectAllRecords" checked aria-label="选择全部测试记录" onchange="perfSelectAllRecords(this.checked)"> #</th>
+                                <th style="padding:10px;text-align:left;border-bottom:1px solid #ddd;">设备 / 启动对象</th>
                                 <th style="padding:10px;text-align:left;border-bottom:1px solid #ddd;">开始时间</th>
                                 <th style="padding:10px;text-align:left;border-bottom:1px solid #ddd;">停止时间</th>
                                 <th style="padding:10px;text-align:right;border-bottom:1px solid #ddd;">手动(ms)</th>
@@ -2371,7 +2758,7 @@
                             </tr>
                         </thead>
                         <tbody id="perfRecordsBody">
-                            <tr><td colspan="8" style="padding:15px;text-align:center;color:#999;">暂无记录</td></tr>
+                            <tr><td colspan="9" style="padding:15px;text-align:center;color:#999;">暂无记录</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -2391,6 +2778,122 @@
                 </div>
 
                 <div class="output-console" id="perfOutput"></div>
+                </section>
+
+                <section class="feature-section perf-overall-section tone-amber">
+                <div class="section-header">
+                    <span class="section-title">应用综合性能测试</span>
+                    <button class="btn btn-secondary" id="perfOverallOpenBtn" onclick="perfOverallOpenResult()" style="padding:6px 12px;font-size:12px;" disabled>打开报告目录</button>
+                </div>
+
+                <div class="alert alert-info" style="font-size:13px;">应用须提前打开并保持前台。本测试只执行场景点击和只读采集，不会执行 force-stop、pm clear、am start 或 monkey。</div>
+
+                <div class="overall-perf-config-grid">
+                    <div class="overall-perf-config-block">
+                        <div class="overall-perf-block-title">目标与采样</div>
+                        <div class="form-group">
+                            <div class="dev-field-label">
+                                <label for="perfOverallPackage">应用包名</label>
+                                <button type="button" class="dev-inline-action" onclick="perfOverallSyncPackage()">同步启动目标</button>
+                            </div>
+                            <input id="perfOverallPackage" value="com.zjdx.neuralnexus" placeholder="如：com.example.app">
+                        </div>
+                        <div class="overall-perf-inline-fields">
+                            <div class="form-group">
+                                <label for="perfOverallRounds">测试轮数</label>
+                                <input id="perfOverallRounds" type="number" min="1" max="20" value="4">
+                            </div>
+                            <div class="form-group">
+                                <label for="perfOverallSettle">场景等待（ms）</label>
+                                <input id="perfOverallSettle" type="number" min="200" max="30000" step="100" value="1200">
+                            </div>
+                        </div>
+                        <div class="dev-field-label">
+                            <label>测试设备</label>
+                            <button type="button" class="dev-inline-action" onclick="perfOverallSelectAllDevices()">全选</button>
+                        </div>
+                        <div class="overall-perf-device-list" id="perfOverallDevices">
+                            <span class="field-help">暂无已连接设备</span>
+                        </div>
+                        <label style="display:flex;align-items:center;gap:6px;margin-top:7px;">
+                            <input type="checkbox" id="perfOverallIncludeStartup" checked>
+                            关联当前启动测试记录（<span id="perfOverallStartupCount">0</span> 条）
+                        </label>
+                    </div>
+
+                    <div class="overall-perf-config-block">
+                        <div class="dev-field-label">
+                            <label for="perfOverallScenarios">交互场景（名称, X, Y）</label>
+                            <button type="button" class="dev-inline-action" onclick="perfOverallResetScenarios()">恢复参考场景</button>
+                        </div>
+                        <textarea id="perfOverallScenarios" spellcheck="false">AI聊天,116,122
+知识百科,306,122
+菜谱大全,116,220
+旅游助手,306,220
+英语陪练,116,320
+作文辅导,306,320
+疗愈管理,116,418
+用药助手,306,418
+养生咨询,116,520
+周公解梦,306,520
+周易卜卦,116,616
+星座解析,306,616</textarea>
+                        <div class="field-help">每行一个场景；坐标写为 -1,-1 时仅采样当前页面。</div>
+                    </div>
+
+                    <div class="overall-perf-config-block">
+                        <div class="overall-perf-block-title">建议阈值</div>
+                        <div class="overall-perf-threshold-grid">
+                            <div class="form-group">
+                                <label for="perfOverallCpuAvg">CPU 平均（%）</label>
+                                <input id="perfOverallCpuAvg" type="number" min="1" step="1" value="50">
+                            </div>
+                            <div class="form-group">
+                                <label for="perfOverallCpuPeak">CPU 峰值（%）</label>
+                                <input id="perfOverallCpuPeak" type="number" min="1" step="1" value="120">
+                            </div>
+                            <div class="form-group">
+                                <label for="perfOverallPssAvg">PSS 平均（MB）</label>
+                                <input id="perfOverallPssAvg" type="number" min="1" step="1" value="120">
+                            </div>
+                            <div class="form-group">
+                                <label for="perfOverallJanky">Janky（%）</label>
+                                <input id="perfOverallJanky" type="number" min="0.1" step="0.1" value="20">
+                            </div>
+                            <div class="form-group">
+                                <label for="perfOverallFrameP90">帧 P90（ms）</label>
+                                <input id="perfOverallFrameP90" type="number" min="1" step="1" value="24">
+                            </div>
+                        </div>
+                        <div class="field-help">崩溃、ANR、进程重启或前台中断均直接判为未通过；AudioFocus 超过 1 次/秒列为风险。</div>
+                    </div>
+                </div>
+
+                <div class="overall-perf-action-bar">
+                    <button class="btn btn-primary" id="perfOverallToggleBtn" onclick="perfOverallToggle()">开始综合性能测试</button>
+                    <div class="status-text" id="perfOverallStatus">等待开始</div>
+                    <div class="overall-perf-progress">
+                        <div class="overall-perf-progress-track" id="perfOverallProgressTrack" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                            <div class="overall-perf-progress-inner" id="perfOverallProgressInner"></div>
+                        </div>
+                        <div class="overall-perf-progress-label">
+                            <span id="perfOverallProgressText">未开始</span>
+                            <span id="perfOverallProgressValue">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="overall-perf-result" id="perfOverallResult" hidden>
+                    <div class="alert alert-info" id="perfOverallConclusion"></div>
+                    <div class="table-shell">
+                        <table class="analysis-table">
+                            <thead><tr><th>设备</th><th>样本</th><th>CPU 平均/峰值</th><th>PSS 平均</th><th>Janky</th><th>帧 P90</th><th>崩溃/ANR</th><th>结论</th></tr></thead>
+                            <tbody id="perfOverallResultBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="field-help" id="perfOverallReportPath"></div>
+                </div>
+                <div class="output-console" id="perfOverallOutput"></div>
                 </section>
             </div>
 
@@ -2801,6 +3304,8 @@
 
         // ===== 设备管理相关 =====
         let devSelectedApks = []; // 已选的 APK 文件路径
+        let devInstallBusy = false;
+        let devInstallActive = null;
         let devRecording = false;
         let devRecordingBusy = false;
         const devCommandHistoryKey = 'voiceQa.adbCommandHistory.v1';
@@ -3057,8 +3562,10 @@
 
         // 选择 APK 文件
         async function devSelectApks() {
+            if (devInstallBusy) return;
             try {
                 const files = await window.go.main.App.SelectApkFiles();
+                if (devInstallBusy) return;
                 if (files && files.length > 0) {
                     devSelectedApks = [...new Set(files)];
                     devRenderApkList();
@@ -3088,6 +3595,7 @@
                 removeButton.className = 'btn btn-danger';
                 removeButton.style.cssText = 'padding:4px 9px;font-size:12px;';
                 removeButton.textContent = '移除';
+                removeButton.disabled = devInstallBusy;
                 removeButton.addEventListener('click', () => devRemoveApk(index));
 
                 item.append(name, removeButton);
@@ -3097,6 +3605,7 @@
 
         // 移除某个 APK
         function devRemoveApk(index) {
+            if (devInstallBusy) return;
             devSelectedApks.splice(index, 1);
             devRenderApkList();
         }
@@ -3104,6 +3613,12 @@
         function devSyncInstallTargetState() {
             const hint = document.getElementById('devInstallHint');
             const button = document.getElementById('devInstallBtn');
+            document.getElementById('devSelectApksBtn').disabled = devInstallBusy;
+            if (devInstallBusy) {
+                button.disabled = true;
+                button.textContent = '安装中...';
+                return;
+            }
             if (globalDevices.length === 0) {
                 hint.textContent = '未检测到设备。连接设备后可选择一个或多个 APK 文件进行安装。';
                 button.textContent = '安装 APK';
@@ -3137,41 +3652,46 @@
 
         // 安装 APK；唯一设备自动选择，多设备使用勾选结果
         async function devInstallApks() {
-            const selected = devGetInstallTargets();
+            if (devInstallBusy) return;
+            const selected = [...devGetInstallTargets()];
             if (selected.length === 0) return;
             if (devSelectedApks.length === 0) { alert('请先选择 APK 文件'); return; }
-
-            const btn = document.getElementById('devInstallBtn');
+            const apks = [...devSelectedApks];
             const statusEl = document.getElementById('devInstallStatus');
-            btn.disabled = true;
-            btn.textContent = '安装中...';
-
-            const total = selected.length * devSelectedApks.length;
+            devInstallBusy = true;
+            devSyncInstallTargetState();
+            devRenderApkList();
+            const total = selected.length * apks.length;
             let done = 0;
             let successCount = 0;
-
-            for (const serial of selected) {
-                for (const apk of devSelectedApks) {
-                    const apkName = apk.split(/[/\\]/).pop();
-                    statusEl.textContent = `正在安装 ${apkName} 到 ${serial}... (${done + 1}/${total})`;
-                    devAppendOutput(`安装 ${apkName} 到 ${serial}...`, 'info');
-                    try {
-                        const r = await window.go.main.App.InstallApk(serial, apk);
-                        if (r.success) {
-                            devAppendOutput(`${serial}: ${apkName} 安装成功`, 'success');
-                            successCount++;
-                        } else {
-                            devAppendOutput(`${serial}: ${apkName} 安装失败 - ${r.message}`, 'error');
+            try {
+                for (const serial of selected) {
+                    for (const apk of apks) {
+                        const apkName = apk.split(/[/\\]/).pop();
+                        devInstallActive = {serial, apkFile: apkName, index: done + 1, total};
+                        statusEl.textContent = `正在安装 ${apkName} 到 ${serial}... (${done + 1}/${total})`;
+                        devAppendOutput(`安装 ${apkName} 到 ${serial}...`, 'info');
+                        try {
+                            const r = await window.go.main.App.InstallApk(serial, apk);
+                            if (r.success) {
+                                devAppendOutput(`${serial}: ${apkName} ${r.message || '安装成功'}`, 'success');
+                                successCount++;
+                            } else {
+                                devAppendOutput(`${serial}: ${apkName} 安装失败 - ${r.message}`, 'error');
+                            }
+                        } catch (e) {
+                            devAppendOutput(`${serial}: ${apkName} 安装异常 - ${e}`, 'error');
                         }
-                    } catch (e) {
-                        devAppendOutput(`${serial}: ${apkName} 安装异常 - ${e}`, 'error');
+                        done++;
                     }
-                    done++;
                 }
+                statusEl.textContent = `安装完成：${successCount}/${total} 成功`;
+            } finally {
+                devInstallActive = null;
+                devInstallBusy = false;
+                devSyncInstallTargetState();
+                devRenderApkList();
             }
-
-            statusEl.textContent = `安装完成：${successCount}/${total} 成功`;
-            devSyncInstallTargetState();
         }
 
         // 设备管理输出控制台
@@ -3652,6 +4172,7 @@
 
         let perfAllPackages = [];
         let perfRecords = [];
+        let perfVerifyRunning = false;
         let perfTimerRunning = false;
         let perfTimerAction = '';
         let perfBatchRunning = false;
@@ -3659,6 +4180,26 @@
         let perfCurrentLaunch = null;
         let perfLastResultDir = '';
         let perfComponentLoadToken = 0;
+        let perfComponentRefreshTimer = null;
+        let perfComponentCandidates = [];
+        let perfOverallRunning = false;
+        let perfOverallStopping = false;
+        let perfOverallLastResultDir = '';
+
+        const perfOverallDefaultScenarios = [
+            ['AI聊天', 116, 122],
+            ['知识百科', 306, 122],
+            ['菜谱大全', 116, 220],
+            ['旅游助手', 306, 220],
+            ['英语陪练', 116, 320],
+            ['作文辅导', 306, 320],
+            ['疗愈管理', 116, 418],
+            ['用药助手', 306, 418],
+            ['养生咨询', 116, 520],
+            ['周公解梦', 306, 520],
+            ['周易卜卦', 116, 616],
+            ['星座解析', 306, 616]
+        ];
 
         // 默认包名列表
         const perfDefaultPkgs = ['zjiptv.mds', 'com.telecom.video'];
@@ -3675,6 +4216,8 @@
             select.innerHTML = '';
             if (globalDevices.length === 0) {
                 select.innerHTML = '<option value="">-- 请先在"设备管理"中连接设备 --</option>';
+                perfOverallSyncDevices();
+                perfRefreshLaunchPreview();
                 return;
             }
             globalDevices.forEach(d => {
@@ -3684,6 +4227,8 @@
                 select.appendChild(opt);
             });
             if (prev && globalDevices.includes(prev)) select.value = prev;
+            perfOverallSyncDevices();
+            perfRefreshLaunchPreview();
         }
 
         function updatePlayDeviceStatus(serial) {
@@ -3735,6 +4280,11 @@
         // 刷新设备（启动时间测试 tab 的刷新按钮）
         async function perfRefreshDevices() {
             await devRefresh();
+        }
+
+        function perfOnPerformanceDeviceChange() {
+            perfRefreshLaunchPreview();
+            perfScheduleComponentMatch();
         }
 
         let perfShowingAll = false; // 是否已展开全部包列表
@@ -3813,7 +4363,14 @@
             }
         });
 
-        function perfSetComponentOptions(components, selected, placeholder) {
+        function perfSetComponentHint(message, state) {
+            const hint = document.getElementById('perfComponentHint');
+            if (!hint) return;
+            hint.textContent = message || '';
+            hint.className = 'perf-component-hint' + (state ? ' ' + state : '');
+        }
+
+        function perfSetComponentOptions(candidates, selected, placeholder) {
             const select = document.getElementById('perfComponentSelect');
             select.innerHTML = '';
             const emptyOpt = document.createElement('option');
@@ -3821,52 +4378,166 @@
             emptyOpt.textContent = placeholder || '-- 选择或手动输入 --';
             select.appendChild(emptyOpt);
 
-            (components || []).forEach(component => {
-                const opt = document.createElement('option');
-                opt.value = component;
-                opt.textContent = component;
-                select.appendChild(opt);
+            perfComponentCandidates = (candidates || []).map(candidate => {
+                if (typeof candidate === 'string') {
+                    return { component: candidate, reason: '', group: 'other' };
+                }
+                return candidate;
+            }).filter(candidate => candidate.component);
+
+            const groups = [
+                ['intent', '当前 Intent 精确匹配'],
+                ['external', '可直接启动'],
+                ['other', '其他候选（建议验证）'],
+                ['internal', '内部 Activity（ADB 不可直接启动）']
+            ];
+            groups.forEach(([groupName, groupLabel]) => {
+                const items = perfComponentCandidates.filter(candidate => (candidate.group || 'other') === groupName);
+                if (!items.length) return;
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = groupLabel + ' · ' + items.length;
+                items.forEach(candidate => {
+                    const opt = document.createElement('option');
+                    const flags = perfDescribeCandidateFlags(candidate);
+                    opt.value = candidate.component;
+                    opt.textContent = candidate.component + (candidate.reason ? '  ·  ' + candidate.reason : '') + (flags ? '  ·  ' + flags : '');
+                    opt.title = perfCandidateDetailText(candidate);
+                    optgroup.appendChild(opt);
+                });
+                select.appendChild(optgroup);
             });
             select.value = selected || '';
+            perfRenderComponentDetails(select.value);
         }
 
-        async function perfLoadComponentsForPackage(pkg, preferredComponent) {
+        function perfDescribeCandidateFlags(candidate) {
+            const flags = [];
+            if (candidate.manifest) {
+                if (candidate.exportedKnown) flags.push('exported=' + Boolean(candidate.exported));
+                if (candidate.enabledKnown) flags.push('enabled=' + Boolean(candidate.enabled));
+                if (candidate.activityAlias) flags.push('alias');
+                if (candidate.group === 'internal') flags.push('不可直启');
+            }
+            return flags.join(' / ');
+        }
+
+        function perfCandidateDetailText(candidate) {
+            const lines = [candidate.component];
+            if (candidate.reason) lines.push('判定: ' + candidate.reason);
+            if (candidate.manifest) {
+                const exportedSource = candidate.exportedDeclared ? '显式声明' : '按 Intent Filter 推断';
+                const enabledSource = candidate.enabledDeclared ? '显式声明' : '默认值';
+                lines.push('exported=' + Boolean(candidate.exported) + '（' + exportedSource + '），enabled=' + Boolean(candidate.enabled) + '（' + enabledSource + '）');
+                if (candidate.sourceApk) lines.push('来源 APK: ' + candidate.sourceApk);
+                if (candidate.activityAlias) {
+                    lines.push('Activity Alias → ' + (candidate.targetActivity || '未声明目标'));
+                }
+                (candidate.intentFilters || []).forEach((filter, index) => {
+                    const parts = [];
+                    if ((filter.actions || []).length) parts.push('action: ' + filter.actions.join(', '));
+                    if ((filter.categories || []).length) parts.push('category: ' + filter.categories.join(', '));
+                    if ((filter.data || []).length) parts.push('data: ' + filter.data.join(' | '));
+                    lines.push('Intent Filter ' + (index + 1) + ': ' + (parts.join('；') || '空'));
+                });
+            }
+            return lines.join('\n');
+        }
+
+        function perfRenderComponentDetails(component) {
+            const details = document.getElementById('perfComponentDetails');
+            if (!details) return;
+            const candidate = perfComponentCandidates.find(item => item.component === component);
+            if (!candidate) {
+                details.hidden = true;
+                details.textContent = '';
+                return;
+            }
+            details.textContent = perfCandidateDetailText(candidate);
+            details.hidden = false;
+        }
+
+        function perfApplyComponentResult(result, preferredComponent, preferRecommended, quiet) {
+            const compInput = document.getElementById('perfComponent');
+            const components = result.components || [];
+            if (!result.success || !components.length) {
+                const fallback = preferredComponent ? [preferredComponent] : [];
+                perfSetComponentOptions(fallback, preferredComponent || '', '-- 未解析到，请手动输入 --');
+                if (preferredComponent) compInput.value = preferredComponent;
+                perfSetComponentHint(result.message || '未解析到 Component，请手动填写。', 'error');
+                if (!quiet) perfAppendOutput(result.message || '未解析到 Component，请手动填写', 'error');
+                return;
+            }
+
+            const recommended = result.recommended || result.launcher || '';
+            let selected = '';
+            if (!preferRecommended && preferredComponent && components.includes(preferredComponent)) {
+                selected = preferredComponent;
+            } else if (recommended) {
+                selected = recommended;
+            } else if (!result.deepScanned) {
+                selected = components[0];
+            }
+            const candidates = Array.isArray(result.candidates) && result.candidates.length
+                ? result.candidates
+                : components;
+            perfSetComponentOptions(candidates, selected, '-- 选择候选或手动输入 --');
+            if (selected) {
+                compInput.value = selected;
+            } else if (result.deepScanned) {
+                compInput.value = '';
+            }
+            const matched = Array.isArray(result.candidates)
+                ? result.candidates.find(candidate => candidate.component === selected)
+                : null;
+            const reason = matched?.reason || (selected === result.launcher ? '桌面启动入口' : '最高匹配候选');
+            const hasWarnings = Array.isArray(result.warnings) && result.warnings.length > 0;
+            if (selected) {
+                const suffix = hasWarnings ? '部分 Manifest 未读取，当前结果可能不完整。' : '候选已按可启动性分组。';
+                perfSetComponentHint('当前推荐：' + selected + '（' + reason + '）。' + suffix, hasWarnings ? 'warning' : 'success');
+            } else {
+                perfSetComponentHint('已找到 Activity，但没有可由 ADB 直接启动的入口；内部 Activity 仅用于定位页面。', 'warning');
+            }
+            if (!quiet) {
+                const outputType = selected && !hasWarnings ? 'success' : 'info';
+                perfAppendOutput(result.message + (selected ? '，已选择: ' + selected + '（' + reason + '）' : ''), outputType);
+                (result.warnings || []).forEach(warning => perfAppendOutput('Manifest 警告: ' + warning, 'error'));
+            }
+        }
+
+        async function perfLoadComponentsForPackage(pkg, preferredComponent, preferRecommended = false, quiet = false) {
             const serial = document.getElementById('perfDeviceSelect').value;
             const compInput = document.getElementById('perfComponent');
             if (!serial) {
                 perfSetComponentOptions(preferredComponent ? [preferredComponent] : [], preferredComponent || '', '-- 选择或手动输入 --');
                 if (preferredComponent) compInput.value = preferredComponent;
-                perfAppendOutput('已选择包名 ' + pkg + '，请选择设备后加载 Component，或手动填写完整 Component', 'info');
+                perfSetComponentHint('请选择设备后智能匹配 Component，或手动填写完整 Component。');
+                if (!quiet) perfAppendOutput('已选择包名 ' + pkg + '，请选择设备后加载 Component，或手动填写完整 Component', 'info');
+                perfRefreshLaunchPreview();
                 return;
             }
 
             const token = ++perfComponentLoadToken;
-            perfSetComponentOptions([], '', '-- 正在加载 Component... --');
-            perfAppendOutput('正在加载 ' + pkg + ' 的 Component 候选...', 'info');
+            perfSetComponentOptions([], '', '-- 正在智能匹配 Component... --');
+            perfSetComponentHint('正在查询当前 Intent、Launcher、TV Launcher、MAIN 和 Activity 清单...');
+            if (!quiet) perfAppendOutput('正在智能匹配 ' + pkg + ' 的 Component 候选...', 'info');
             try {
-                const result = await window.go.main.App.GetPackageComponents(serial, pkg);
+                const launch = perfReadLaunchTarget();
+                if (preferredComponent) launch.component = preferredComponent;
+                const appApi = window.go.main.App;
+                const result = typeof appApi.GetPackageComponentsForLaunch === 'function'
+                    ? await appApi.GetPackageComponentsForLaunch(serial, pkg, launch)
+                    : await appApi.GetPackageComponents(serial, pkg);
                 if (token !== perfComponentLoadToken) return;
-                const components = (result.components || []);
-                if (result.success && components.length) {
-                    const selected = (preferredComponent && components.includes(preferredComponent))
-                        ? preferredComponent
-                        : (result.launcher || components[0]);
-                    perfSetComponentOptions(components, selected, '-- 选择或手动输入 --');
-                    compInput.value = selected;
-                    perfAppendOutput(result.message + '，已选择: ' + selected, 'success');
-                } else {
-                    const fallback = preferredComponent ? [preferredComponent] : [];
-                    perfSetComponentOptions(fallback, preferredComponent || '', '-- 未解析到，请手动输入 --');
-                    if (preferredComponent) compInput.value = preferredComponent;
-                    perfAppendOutput(result.message || '未解析到 Component，请手动填写', 'error');
-                }
+                perfApplyComponentResult(result, preferredComponent, preferRecommended, quiet);
             } catch (e) {
                 if (token !== perfComponentLoadToken) return;
                 const fallback = preferredComponent ? [preferredComponent] : [];
                 perfSetComponentOptions(fallback, preferredComponent || '', '-- 加载失败，请手动输入 --');
                 if (preferredComponent) compInput.value = preferredComponent;
-                perfAppendOutput('加载 Component 失败: ' + e, 'error');
+                perfSetComponentHint('智能匹配失败，请手动填写：' + e, 'error');
+                if (!quiet) perfAppendOutput('加载 Component 失败: ' + e, 'error');
             }
+            perfRefreshLaunchPreview();
         }
 
         async function perfRefreshComponents() {
@@ -3877,7 +4548,77 @@
             }
             const currentComponent = document.getElementById('perfComponent').value.trim();
             const preferred = currentComponent.startsWith(packageName + '/') ? currentComponent : '';
-            await perfLoadComponentsForPackage(packageName, preferred);
+            await perfLoadComponentsForPackage(packageName, preferred, true);
+        }
+
+        async function perfDeepScanComponents() {
+            const packageName = perfGetSelectedPackageName();
+            const serial = document.getElementById('perfDeviceSelect').value;
+            if (!serial) {
+                alert('请先选择设备');
+                return;
+            }
+            if (!packageName) {
+                alert('请先选择应用包名或填写 Component');
+                return;
+            }
+            const button = document.getElementById('perfDeepScanBtn');
+            const originalText = button.textContent;
+            const token = ++perfComponentLoadToken;
+            const currentComponent = document.getElementById('perfComponent').value.trim();
+            const preferred = currentComponent.startsWith(packageName + '/') ? currentComponent : '';
+            const launch = perfReadLaunchTarget();
+            button.disabled = true;
+            button.textContent = '扫描中...';
+            perfSetComponentHint('正在从设备读取 APK Manifest；首次扫描可能需要一些时间，同版本再次扫描会直接使用缓存。');
+            perfAppendOutput('正在深度扫描 ' + packageName + ' 的 base APK 与 split APK Manifest...', 'info');
+            try {
+                const result = await window.go.main.App.DeepScanPackageComponents(serial, packageName, launch);
+                if (token !== perfComponentLoadToken) return;
+                perfApplyComponentResult(result, preferred, true, false);
+            } catch (e) {
+                if (token !== perfComponentLoadToken) return;
+                perfSetComponentHint('Manifest 深度扫描失败：' + e, 'error');
+                perfAppendOutput('Manifest 深度扫描失败: ' + e, 'error');
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+                perfRefreshLaunchPreview();
+            }
+        }
+
+        async function perfVerifyLaunch() {
+            if (perfVerifyRunning || perfTimerRunning || perfTimerAction || perfBatchRunning || perfOverallRunning) return;
+            const params = perfGetParams();
+            if (!params) return;
+            const button = document.getElementById('perfVerifyLaunchBtn');
+            const originalText = button.textContent;
+            const waitMilliseconds = Number(document.getElementById('perfVerifyWaitMs').value) || 1500;
+            const opts = {
+                forceStop: document.getElementById('perfVerifyForceStop').checked,
+                waitMilliseconds
+            };
+            button.disabled = true;
+            perfVerifyRunning = true;
+            perfSyncTimerControl();
+            button.textContent = '验证中...';
+            perfSetComponentHint('正在执行配置的启动命令，并读取稳定后的前台 Activity...');
+            perfAppendOutput('验证入口: ' + perfFormatLaunchCommand(params.serial, params.launch), 'info');
+            try {
+                const result = await window.go.main.App.VerifyPackageLaunch(params.serial, params.launch, opts);
+                if (result.output) perfAppendOutput(result.output, result.success ? 'info' : 'error');
+                const state = result.success && result.samePackage ? 'success' : (result.success ? 'warning' : 'error');
+                perfSetComponentHint(result.message || '入口验证完成', state);
+                perfAppendOutput(result.message || '入口验证完成', result.success ? 'success' : 'error');
+            } catch (e) {
+                perfSetComponentHint('入口验证失败：' + e, 'error');
+                perfAppendOutput('入口验证失败: ' + e, 'error');
+            } finally {
+                perfVerifyRunning = false;
+                button.disabled = false;
+                button.textContent = originalText;
+                perfSyncTimerControl();
+            }
         }
 
         // 选择包名时处理
@@ -3892,11 +4633,13 @@
             }
 
             if (pkg) {
+                document.getElementById('perfOverallPackage').value = pkg;
+                const preferIntentMatch = document.getElementById('perfIntentEnabled').checked;
                 // 如果有默认 component 映射，自动填充
                 if (perfDefaultComponents[pkg]) {
                     document.getElementById('perfComponent').value = perfDefaultComponents[pkg];
                     document.getElementById('perfComponentSelect').value = perfDefaultComponents[pkg];
-                    await perfLoadComponentsForPackage(pkg, perfDefaultComponents[pkg]);
+                    await perfLoadComponentsForPackage(pkg, perfDefaultComponents[pkg], preferIntentMatch);
                 } else {
                     const compInput = document.getElementById('perfComponent');
                     if (!compInput.value || !compInput.value.startsWith(pkg)) {
@@ -3914,19 +4657,118 @@
             if (val) {
                 document.getElementById('perfComponent').value = val;
             }
+            perfRenderComponentDetails(val);
+            const candidate = perfComponentCandidates.find(item => item.component === val);
+            if (candidate?.group === 'internal') {
+                perfSetComponentHint('该 Activity 为内部或禁用页面，ADB shell 通常不能直接启动；请选择公开入口，再用“验证入口”确认最终页面。', 'warning');
+            } else if (candidate) {
+                perfSetComponentHint('已选择：' + val + '（' + (candidate.reason || '候选入口') + '）。', 'success');
+            }
+            perfRefreshLaunchPreview();
         }
 
-        // 获取当前选择的 serial 和 component
+        function perfOnComponentInput() {
+            const value = document.getElementById('perfComponent').value.trim();
+            perfRenderComponentDetails(value);
+            perfRefreshLaunchPreview();
+        }
+
+        function perfToggleIntentOptions() {
+            const enabled = document.getElementById('perfIntentEnabled').checked;
+            document.getElementById('perfIntentConfig').hidden = !enabled;
+            document.getElementById('perfIntentFields').hidden = !enabled;
+            perfRefreshLaunchPreview();
+            perfScheduleComponentMatch();
+        }
+
+        function perfOnIntentCriteriaChange() {
+            perfRefreshLaunchPreview();
+            perfScheduleComponentMatch();
+        }
+
+        function perfScheduleComponentMatch() {
+            if (perfComponentRefreshTimer) clearTimeout(perfComponentRefreshTimer);
+            const packageName = perfGetSelectedPackageName();
+            const serial = document.getElementById('perfDeviceSelect').value;
+            if (!packageName || !serial) return;
+
+            const launch = perfReadLaunchTarget();
+            const identifierPattern = /^[A-Za-z0-9_.$]+$/;
+            if ((launch.action && !identifierPattern.test(launch.action)) ||
+                launch.categories.some(category => !identifierPattern.test(category)) ||
+                (launch.dataUri && !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(launch.dataUri))) {
+                perfSetComponentHint('继续填写有效的 Intent 参数后，将自动重新匹配 Component。');
+                return;
+            }
+            perfComponentRefreshTimer = setTimeout(() => {
+                perfLoadComponentsForPackage(packageName, '', true, true);
+            }, 500);
+        }
+
+        function perfReadLaunchTarget() {
+            const enabled = document.getElementById('perfIntentEnabled').checked;
+            const categories = enabled
+                ? document.getElementById('perfIntentCategories').value.split(/[,，\n]+/).map(value => value.trim()).filter(Boolean)
+                : [];
+            return {
+                component: document.getElementById('perfComponent').value.trim(),
+                action: enabled ? document.getElementById('perfIntentAction').value.trim() : '',
+                categories,
+                dataUri: enabled ? document.getElementById('perfIntentData').value.trim() : ''
+            };
+        }
+
+        function perfQuoteLaunchArg(value, always) {
+            const text = String(value || '');
+            if (!always && text && !/[\s"'&|<>^]/.test(text)) return text;
+            return '"' + text.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+        }
+
+        function perfFormatLaunchCommand(serial, launch) {
+            const args = [
+                'am', 'start', '-W', '-n', launch.component || '<component>'
+            ];
+            if (launch.action) args.push('-a', launch.action);
+            (launch.categories || []).forEach(category => args.push('-c', category));
+            if (launch.dataUri) args.push('-d', launch.dataUri);
+            const remote = args.map(arg => "'" + String(arg).replace(/'/g, "'\"'\"'") + "'").join(' ');
+            return 'adb -s ' + perfQuoteLaunchArg(serial || '<device>') + ' shell ' + perfQuoteLaunchArg(remote, true);
+        }
+
+        function perfRefreshLaunchPreview() {
+            const launch = perfReadLaunchTarget();
+            const serial = document.getElementById('perfDeviceSelect').value;
+            const preview = document.getElementById('perfLaunchPreview');
+            if (preview) preview.textContent = perfFormatLaunchCommand(serial, launch);
+            perfSyncTimerControl();
+        }
+
+        // 获取当前选择的设备和完整启动参数。
         function perfGetParams() {
             const serial = document.getElementById('perfDeviceSelect').value;
-            const component = document.getElementById('perfComponent').value.trim();
+            const launch = perfReadLaunchTarget();
+            const component = launch.component;
             if (!serial) { alert('请先选择设备'); return null; }
             const slash = component.indexOf('/');
             if (!component || slash <= 0 || slash === component.length - 1) {
                 alert('请输入完整的 Component 名称（包名/Activity名），例如 com.example/.MainActivity');
                 return null;
             }
-            return { serial, component, packageName: component.split('/')[0] };
+            const identifierPattern = /^[A-Za-z0-9_.$]+$/;
+            if (launch.action && !identifierPattern.test(launch.action)) {
+                alert('Intent Action 格式无效，例如 android.intent.action.VIEW');
+                return null;
+            }
+            const invalidCategory = launch.categories.find(category => !identifierPattern.test(category));
+            if (invalidCategory) {
+                alert('Intent Category 格式无效: ' + invalidCategory);
+                return null;
+            }
+            if (launch.dataUri && !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(launch.dataUri)) {
+                alert('请输入完整的 Data URI，例如 aiquestion://open_page');
+                return null;
+            }
+            return { serial, component, packageName: component.split('/')[0], launch };
         }
 
         function perfGetSelectedPackageName() {
@@ -3942,7 +4784,316 @@
             return '';
         }
 
+        function perfOverallSyncDevices() {
+            const container = document.getElementById('perfOverallDevices');
+            if (!container) return;
+            const previous = new Map(Array.from(container.querySelectorAll('input[type="checkbox"]'))
+                .map(input => [input.value, input.checked]));
+            container.replaceChildren();
+            if (globalDevices.length === 0) {
+                const empty = document.createElement('span');
+                empty.className = 'field-help';
+                empty.textContent = '暂无已连接设备';
+                container.appendChild(empty);
+                return;
+            }
+            globalDevices.forEach(serial => {
+                const label = document.createElement('label');
+                label.className = 'overall-perf-device-option';
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.value = serial;
+                input.checked = previous.has(serial) ? previous.get(serial) : true;
+                input.disabled = perfOverallRunning;
+                const text = document.createElement('span');
+                text.textContent = serial;
+                text.title = serial;
+                label.append(input, text);
+                container.appendChild(label);
+            });
+        }
+
+        function perfOverallSelectAllDevices() {
+            document.querySelectorAll('#perfOverallDevices input[type="checkbox"]').forEach(input => {
+                input.checked = true;
+            });
+        }
+
+        function perfOverallSyncPackage() {
+            const packageName = perfGetSelectedPackageName();
+            if (!packageName) {
+                alert('启动性能目标中还没有可同步的应用包名');
+                return;
+            }
+            document.getElementById('perfOverallPackage').value = packageName;
+            perfOverallAppendOutput('已同步应用包名: ' + packageName, 'info');
+        }
+
+        function perfOverallResetScenarios() {
+            document.getElementById('perfOverallScenarios').value = perfOverallDefaultScenarios
+                .map(item => item.join(','))
+                .join('\n');
+        }
+
+        function perfOverallParseScenarios() {
+            const lines = document.getElementById('perfOverallScenarios').value
+                .split(/\r?\n/)
+                .map(line => line.trim())
+                .filter(Boolean);
+            if (lines.length === 0) throw new Error('请至少填写一个交互场景');
+            if (lines.length > 50) throw new Error('交互场景最多 50 个');
+            return lines.map((line, index) => {
+                const parts = line.split(/[,，\t]/).map(part => part.trim());
+                if (parts.length !== 3 || !parts[0]) {
+                    throw new Error('第 ' + (index + 1) + ' 行格式应为：名称, X, Y');
+                }
+                const x = Number(parts[1]);
+                const y = Number(parts[2]);
+                if (!Number.isInteger(x) || !Number.isInteger(y)) {
+                    throw new Error('第 ' + (index + 1) + ' 行的 X、Y 必须是整数');
+                }
+                const passive = x === -1 && y === -1;
+                if (!passive && (x < 0 || y < 0 || x > 10000 || y > 10000)) {
+                    throw new Error('第 ' + (index + 1) + ' 行坐标无效；仅采样请使用 -1,-1');
+                }
+                return { name: parts[0], x, y };
+            });
+        }
+
+        function perfOverallNumber(id, label, min, max) {
+            const value = Number(document.getElementById(id).value);
+            if (!Number.isFinite(value) || value < min || value > max) {
+                throw new Error(label + '必须在 ' + min + '-' + max + ' 之间');
+            }
+            return value;
+        }
+
+        function perfOverallSetProgress(percent, message) {
+            const normalized = Math.max(0, Math.min(100, Number(percent) || 0));
+            document.getElementById('perfOverallProgressInner').style.width = normalized.toFixed(1) + '%';
+            document.getElementById('perfOverallProgressValue').textContent = normalized.toFixed(normalized >= 10 ? 0 : 1) + '%';
+            document.getElementById('perfOverallProgressText').textContent = message || '处理中';
+            document.getElementById('perfOverallProgressTrack').setAttribute('aria-valuenow', normalized.toFixed(1));
+        }
+
+        function perfOverallAppendOutput(message, type) {
+            const output = document.getElementById('perfOverallOutput');
+            output.classList.add('active');
+            const line = document.createElement('div');
+            line.className = 'line';
+            if (type === 'error') line.classList.add('error');
+            if (type === 'success') line.classList.add('success');
+            if (type === 'info') line.classList.add('info');
+            line.textContent = '[' + perfFormatTime(Date.now()) + '] ' + message;
+            output.appendChild(line);
+            while (output.children.length > 500) output.removeChild(output.firstChild);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function perfOverallSyncControls() {
+            const button = document.getElementById('perfOverallToggleBtn');
+            if (!button) return;
+            const configIds = [
+                'perfOverallPackage', 'perfOverallRounds', 'perfOverallSettle', 'perfOverallIncludeStartup',
+                'perfOverallScenarios', 'perfOverallCpuAvg', 'perfOverallCpuPeak', 'perfOverallPssAvg',
+                'perfOverallJanky', 'perfOverallFrameP90'
+            ];
+            configIds.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) element.disabled = perfOverallRunning;
+            });
+            document.querySelectorAll('#perfOverallDevices input[type="checkbox"]').forEach(input => {
+                input.disabled = perfOverallRunning;
+            });
+            button.classList.toggle('btn-primary', !perfOverallRunning);
+            button.classList.toggle('btn-danger', perfOverallRunning);
+            button.disabled = perfOverallStopping;
+            button.textContent = perfOverallStopping
+                ? '正在停止并保存...'
+                : (perfOverallRunning ? '停止测试并保存' : '开始综合性能测试');
+
+            const batchButton = document.getElementById('perfBatchBtn');
+            if (batchButton) batchButton.disabled = perfBatchRunning || perfOverallRunning;
+            const controlButton = document.getElementById('perfControlRunBtn');
+            if (controlButton) controlButton.disabled = perfOverallRunning;
+            const killButton = document.getElementById('perfKillAllBtn');
+            if (killButton) killButton.disabled = perfOverallRunning;
+            perfSyncTimerControl();
+        }
+
+        async function perfOverallToggle() {
+            if (perfOverallRunning) {
+                if (perfOverallStopping) return;
+                perfOverallStopping = true;
+                perfOverallSyncControls();
+                perfOverallAppendOutput('请求停止测试，正在保存当前设备证据...', 'info');
+                try {
+                    const result = await window.go.main.App.StopOverallPerformanceTest();
+                    perfOverallAppendOutput(result.message || '已发出停止请求', result.success ? 'info' : 'error');
+                } catch (error) {
+                    perfOverallStopping = false;
+                    perfOverallSyncControls();
+                    perfOverallAppendOutput('停止测试失败: ' + error, 'error');
+                }
+                return;
+            }
+            await perfOverallStart();
+        }
+
+        async function perfOverallStart() {
+            if (perfTimerRunning || perfTimerAction || perfBatchRunning || perfVerifyRunning) {
+                alert('启动性能测试正在运行，请先结束后再开始综合性能测试');
+                return;
+            }
+
+            let request;
+            try {
+                const packageName = document.getElementById('perfOverallPackage').value.trim();
+                if (!/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(packageName)) {
+                    throw new Error('请输入有效的应用包名');
+                }
+                const devices = Array.from(document.querySelectorAll('#perfOverallDevices input[type="checkbox"]:checked'))
+                    .map(input => input.value);
+                if (devices.length === 0) throw new Error('请至少选择一台测试设备');
+                const includeStartup = document.getElementById('perfOverallIncludeStartup').checked;
+                request = {
+                    package: packageName,
+                    devices,
+                    scenarios: perfOverallParseScenarios(),
+                    rounds: Math.trunc(perfOverallNumber('perfOverallRounds', '测试轮数', 1, 20)),
+                    settleMilliseconds: Math.trunc(perfOverallNumber('perfOverallSettle', '场景等待时间', 200, 30000)),
+                    thresholds: {
+                        cpuAveragePercent: perfOverallNumber('perfOverallCpuAvg', 'CPU 平均阈值', 0.1, 10000),
+                        cpuPeakPercent: perfOverallNumber('perfOverallCpuPeak', 'CPU 峰值阈值', 0.1, 10000),
+                        pssAverageMb: perfOverallNumber('perfOverallPssAvg', 'PSS 平均阈值', 0.1, 100000),
+                        jankyFramesPercent: perfOverallNumber('perfOverallJanky', 'Janky 阈值', 0.1, 100),
+                        frameP90Ms: perfOverallNumber('perfOverallFrameP90', '帧 P90 阈值', 0.1, 10000)
+                    },
+                    includeStartup,
+                    startupResultDirs: includeStartup ? perfReportResultDirs() : []
+                };
+            } catch (error) {
+                alert(error.message || String(error));
+                return;
+            }
+
+            perfOverallRunning = true;
+            perfOverallStopping = false;
+            perfOverallSyncControls();
+            perfOverallSetProgress(0, '正在检查设备和应用前台状态');
+            document.getElementById('perfOverallStatus').textContent = '综合性能测试运行中';
+            document.getElementById('perfOverallResult').hidden = true;
+            document.getElementById('perfOverallOutput').replaceChildren();
+            perfOverallAppendOutput('开始测试 ' + request.package + '：' + request.devices.length + ' 台设备，' + request.scenarios.length + ' 个场景 x ' + request.rounds + ' 轮', 'info');
+            perfOverallAppendOutput('安全约束：不启动、不停止、不清除目标应用', 'info');
+
+            try {
+                const result = await window.go.main.App.RunOverallPerformanceTest(request);
+                perfOverallRenderResult(result || {});
+            } catch (error) {
+                document.getElementById('perfOverallStatus').textContent = '综合性能测试异常';
+                perfOverallAppendOutput('测试异常: ' + error, 'error');
+            } finally {
+                perfOverallRunning = false;
+                perfOverallStopping = false;
+                perfOverallSyncControls();
+            }
+        }
+
+        function perfOverallFormatMetric(value, available, suffix) {
+            return available && Number.isFinite(Number(value)) ? Number(value).toFixed(1) + suffix : 'N/A';
+        }
+
+        function perfOverallGfxMetrics(device) {
+            return device?.gfxinfo || device?.gfxInfo || {};
+        }
+
+        function perfOverallDevicePassed(device, thresholds) {
+            const samples = device.samples || {};
+            const cpu = samples.topCpuPercent || {};
+            const pss = samples.pssKb || {};
+            const gfx = perfOverallGfxMetrics(device);
+            const logcat = device.logcat || {};
+            const sampleCount = Number(samples.sampleCount) || 0;
+            const expectedSamples = (Number(device.rounds) || 0) * (Number(device.scenariosPerRound) || 0);
+            return sampleCount > 0 && (!expectedSamples || sampleCount === expectedSamples) && Number(cpu.count) === sampleCount && Number(pss.count) === sampleCount && gfx.available &&
+                Number(cpu.mean) <= Number(thresholds.cpuAveragePercent) &&
+                Number(cpu.max) <= Number(thresholds.cpuPeakPercent) &&
+                Number(pss.mean) / 1024 <= Number(thresholds.pssAverageMb) &&
+                Number(gfx.jankyPercent) <= Number(thresholds.jankyFramesPercent) &&
+                Number(gfx.p90Ms) <= Number(thresholds.frameP90Ms) &&
+                Number(logcat.fatalExceptionCount || 0) + Number(logcat.amCrashCount || 0) === 0 &&
+                Number(logcat.anrCount || 0) === 0 && Number(logcat.audioFocusRequestsPerSecond || 0) <= 1 &&
+                Number(device.initialPid) > 0 && Number(device.finalPid) === Number(device.initialPid) &&
+                Number(samples.processAliveSamples) === sampleCount && Number(samples.foregroundSamples) === sampleCount;
+        }
+
+        function perfOverallRenderResult(result) {
+            const devices = Array.isArray(result.results) ? result.results : [];
+            const errors = Array.isArray(result.errors) ? result.errors : [];
+            const thresholds = result.protocol?.thresholds || {
+                cpuAveragePercent: 50, cpuPeakPercent: 120, pssAverageMb: 120,
+                jankyFramesPercent: 20, frameP90Ms: 24
+            };
+            if (result.resultDir) {
+                perfOverallLastResultDir = result.resultDir;
+                document.getElementById('perfOverallOpenBtn').disabled = false;
+            }
+
+            const resultPanel = document.getElementById('perfOverallResult');
+            const conclusion = document.getElementById('perfOverallConclusion');
+            resultPanel.hidden = false;
+            conclusion.className = 'alert ' + (result.overallPassed && errors.length === 0 ? 'alert-success' : 'alert-error');
+            conclusion.textContent = result.message || (result.overallPassed ? '综合性能测试通过' : '综合性能测试需要复核');
+
+            const body = document.getElementById('perfOverallResultBody');
+            body.innerHTML = devices.map(device => {
+                const samples = device.samples || {};
+                const cpu = samples.topCpuPercent || {};
+                const pss = samples.pssKb || {};
+                const gfx = perfOverallGfxMetrics(device);
+                const logcat = device.logcat || {};
+                const model = [device.metadata?.manufacturer, device.metadata?.model].filter(Boolean).join(' ');
+                const label = model ? model + ' (' + (device.serial || '') + ')' : (device.serial || '-');
+                const passed = perfOverallDevicePassed(device, thresholds);
+                return `<tr>
+                    <td>${perfEscapeHtml(label)}</td>
+                    <td>${Number(samples.sampleCount) || 0}</td>
+                    <td>${perfOverallFormatMetric(cpu.mean, Number(cpu.count) > 0, '%')} / ${perfOverallFormatMetric(cpu.max, Number(cpu.count) > 0, '%')}</td>
+                    <td>${perfOverallFormatMetric(Number(pss.mean) / 1024, Number(pss.count) > 0, ' MB')}</td>
+                    <td>${perfOverallFormatMetric(gfx.jankyPercent, !!gfx.available, '%')}</td>
+                    <td>${perfOverallFormatMetric(gfx.p90Ms, !!gfx.available, ' ms')}</td>
+                    <td>${Number(logcat.fatalExceptionCount || 0) + Number(logcat.amCrashCount || 0)} / ${Number(logcat.anrCount || 0)}</td>
+                    <td class="${passed ? 'perf-state-ok' : 'perf-state-bad'}">${passed ? '通过' : '未通过/复核'}</td>
+                </tr>`;
+            }).join('') || '<tr><td colspan="8" style="text-align:center;color:#64748b;">没有有效设备结果</td></tr>';
+
+            document.getElementById('perfOverallReportPath').textContent = result.reportFile
+                ? 'Markdown 报告：' + result.reportFile
+                : (result.resultDir ? '结果目录：' + result.resultDir : '未生成结果目录');
+            document.getElementById('perfOverallStatus').textContent = result.stopped ? '测试已停止，部分结果已保存' : (result.message || '测试结束');
+            perfOverallAppendOutput(result.message || '综合性能测试结束', result.overallPassed ? 'success' : 'error');
+            errors.forEach(item => perfOverallAppendOutput((item.serial ? item.serial + '：' : '') + (item.message || item.type || '运行失败'), 'error'));
+            if (result.reportFile) perfOverallAppendOutput('Markdown 报告: ' + result.reportFile, 'success');
+        }
+
+        async function perfOverallOpenResult() {
+            if (!perfOverallLastResultDir) {
+                alert('暂无综合性能测试结果目录');
+                return;
+            }
+            try {
+                await window.go.main.App.OpenDirectory(perfOverallLastResultDir);
+            } catch (error) {
+                perfOverallAppendOutput('打开结果目录失败: ' + error, 'error');
+            }
+        }
+
         async function perfRunControlCommands() {
+            if (perfOverallRunning) {
+                alert('综合性能测试运行中，不能执行会改变应用状态的命令');
+                return;
+            }
             const serial = document.getElementById('perfDeviceSelect').value;
             if (!serial) { alert('请先选择设备'); return; }
 
@@ -3986,6 +5137,10 @@
 
         // 停止所有应用（包括前台正在运行的）
         async function perfKillAllApps() {
+            if (perfOverallRunning) {
+                alert('综合性能测试运行中，不能停止应用');
+                return;
+            }
             const serial = document.getElementById('perfDeviceSelect').value;
             if (!serial) { alert('请先选择设备'); return; }
 
@@ -4016,12 +5171,19 @@
             if (!button || !commandName || !commandDesc) return;
 
             const stopMode = perfTimerRunning && perfTimerAction !== 'start';
-            commandName.textContent = stopMode ? 'perfetto --stop / pull trace' : 'am start -W -n <component>';
+            const launch = perfReadLaunchTarget();
+            const serial = document.getElementById('perfDeviceSelect').value;
+            const forceStop = !!document.getElementById('perfSingleForceStop')?.checked;
+            commandName.textContent = stopMode ? 'perfetto --stop / pull trace' : perfFormatLaunchCommand(serial, launch);
             commandDesc.textContent = stopMode
                 ? '停止当前采集会话，拉取 trace、logcat、报告和时间线文件。'
-                : '启动目标 Activity 并读取 ThisTime、TotalTime、WaitTime；启用 Perfetto 时会同步开始 trace 采集。';
+                : (forceStop ? '先 force-stop 目标应用，再执行启动命令并读取计时结果。' : '执行启动命令并读取 ThisTime、TotalTime、WaitTime。');
 
-            button.disabled = !!perfTimerAction || perfBatchRunning;
+            button.disabled = !!perfTimerAction || perfBatchRunning || perfOverallRunning || perfVerifyRunning;
+            const verify = document.getElementById('perfVerifyLaunchBtn');
+            if (verify) verify.disabled = perfTimerRunning || !!perfTimerAction || perfBatchRunning || perfOverallRunning || perfVerifyRunning;
+            const batch = document.getElementById('perfBatchBtn');
+            if (batch) batch.disabled = perfTimerRunning || !!perfTimerAction || perfBatchRunning || perfOverallRunning || perfVerifyRunning;
             button.classList.toggle('btn-primary', !stopMode);
             button.classList.toggle('btn-danger', stopMode);
             if (perfTimerAction === 'start') {
@@ -4030,13 +5192,15 @@
                 button.textContent = '正在停止并保存...';
             } else if (perfBatchRunning) {
                 button.textContent = '批量测试中...';
+            } else if (perfOverallRunning) {
+                button.textContent = '综合性能测试中...';
             } else {
                 button.textContent = stopMode ? '执行停止计时' : '执行启动计时';
             }
         }
 
         function perfToggleTimer() {
-            if (perfTimerAction || perfBatchRunning) return;
+            if (perfTimerAction || perfBatchRunning || perfOverallRunning) return;
             if (perfTimerRunning) {
                 perfStopTimer();
             } else {
@@ -4046,7 +5210,7 @@
 
         // 启动计时
         async function perfStartTimer() {
-            if (perfTimerRunning || perfTimerAction || perfBatchRunning) return;
+            if (perfTimerRunning || perfTimerAction || perfBatchRunning || perfOverallRunning || perfVerifyRunning) return;
             const params = perfGetParams();
             if (!params) return;
 
@@ -4054,27 +5218,33 @@
             const opts = {
                 enabled: document.getElementById('perfettoEnabled').checked,
                 maxDurationSeconds: parseInt(document.getElementById('perfettoMaxDuration').value || '30', 10),
-                bufferSizeMB: parseInt(document.getElementById('perfettoBufferSize').value || '64', 10)
+                bufferSizeMB: parseInt(document.getElementById('perfettoBufferSize').value || '64', 10),
+                forceStop: document.getElementById('perfSingleForceStop').checked
             };
 
-            // 记录开始时间并启动 Activity
-            perfStartMs = Date.now();
+            // 计时起点由后端在实际发出启动命令时返回。
+            perfStartMs = 0;
             perfTimerRunning = true;
             perfTimerAction = 'start';
             perfCurrentLaunch = null;
             perfRenderCapability(null);
             perfSyncTimerControl();
-            const startTimeStr = perfFormatTime(perfStartMs);
-            statusText.textContent = '计时中... 开始时间: ' + startTimeStr;
-            perfAppendOutput('开始时间: ' + startTimeStr, 'info');
+            statusText.textContent = '正在准备采集并启动应用...';
             if (opts.enabled) {
                 perfAppendOutput('启动 Perfetto，最大采集时长 ' + opts.maxDurationSeconds + ' 秒，Buffer ' + opts.bufferSizeMB + ' MB', 'info');
             }
-            perfAppendOutput('执行 am start -W -n ' + params.component, 'info');
+            if (opts.forceStop) {
+                perfAppendOutput('执行 adb -s ' + params.serial + ' shell am force-stop ' + params.packageName, 'info');
+            }
+            perfAppendOutput('执行 ' + perfFormatLaunchCommand(params.serial, params.launch), 'info');
 
             try {
-                const result = await window.go.main.App.PerfStartLaunchTrace(params.serial, params.component, opts);
-                if (perfTimerRunning) perfCurrentLaunch = result;
+                const result = await window.go.main.App.PerfStartLaunchTrace(params.serial, params.launch, opts);
+                if (perfTimerRunning) {
+                    perfCurrentLaunch = result;
+                    perfStartMs = perfParseGoTime(result.timestamp) || perfStartMs;
+                    statusText.textContent = '计时中... 开始时间: ' + perfFormatTime(perfStartMs);
+                }
                 if (result.resultDir) {
                     perfLastResultDir = result.resultDir;
                     document.getElementById('perfOpenResultBtn').disabled = false;
@@ -4093,7 +5263,7 @@
                 if (opts.enabled) {
                     perfAppendCapability(result.capability);
                 }
-                if (!result.success && !result.traceEnabled) {
+                if (!result.success) {
                     perfTimerRunning = false;
                     statusText.textContent = result.message || '启动计时失败';
                 }
@@ -4113,16 +5283,9 @@
             perfTimerAction = 'stop';
             perfSyncTimerControl();
 
-            const stopMs = Date.now();
-            const stopTimeStr = perfFormatTime(stopMs);
-            const duration = stopMs - perfStartMs;
             const currentLaunch = perfCurrentLaunch;
 
-            document.getElementById('perfStatusText').textContent =
-                '耗时: ' + duration + ' ms | 停止时间: ' + stopTimeStr;
-
-            perfAppendOutput('停止时间: ' + stopTimeStr, 'info');
-            perfAppendOutput('耗时: ' + duration + ' ms', 'success');
+            document.getElementById('perfStatusText').textContent = '正在停止并保存计时记录...';
 
             let stopResult = null;
             try {
@@ -4150,22 +5313,15 @@
                 perfAppendOutput('停止 Perfetto 失败: ' + e, 'error');
             }
 
-            perfRecords.push({
-                startTime: perfStartMs,
-                stopTime: stopMs,
-                duration: duration,
-                thisTimeMs: currentLaunch ? currentLaunch.thisTimeMs : 0,
-                totalTimeMs: currentLaunch ? currentLaunch.totalTimeMs : 0,
-                waitTimeMs: currentLaunch ? currentLaunch.waitTimeMs : 0,
-                traceFile: stopResult ? stopResult.traceFile : '',
-                logcatFile: stopResult ? stopResult.logcatFile : '',
-                reportFile: stopResult ? stopResult.reportFile : '',
-                timelineFile: stopResult ? stopResult.timelineFile : '',
-                traceSizeBytes: stopResult ? stopResult.traceSizeBytes : 0,
-                traceAnalyzable: stopResult ? stopResult.traceAnalyzable : false,
-                traceWarning: stopResult ? stopResult.traceWarning : '',
-                resultDir: stopResult ? stopResult.resultDir : (currentLaunch ? currentLaunch.resultDir : '')
-            });
+            if (stopResult?.run) {
+                const record = perfRecordFromRun(stopResult.run);
+                perfRecords.push(record);
+                document.getElementById('perfStatusText').textContent = record.duration > 0
+                    ? '手动耗时: ' + record.duration + ' ms | 停止时间: ' + perfFormatTime(record.stopTime)
+                    : (stopResult.message || '计时已结束，无有效手动耗时');
+            } else {
+                document.getElementById('perfStatusText').textContent = '未取得已保存的计时记录，请检查日志';
+            }
             perfRenderRecords();
             perfCurrentLaunch = null;
             perfTimerRunning = false;
@@ -4174,8 +5330,8 @@
         }
 
         async function perfRunBatch() {
-            if (perfTimerRunning || perfTimerAction || perfBatchRunning) {
-                alert('当前单次启动计时仍在运行，请先停止');
+            if (perfTimerRunning || perfTimerAction || perfBatchRunning || perfOverallRunning || perfVerifyRunning) {
+                alert(perfOverallRunning ? '综合性能测试正在运行，请先停止' : '当前单次启动计时仍在运行，请先停止');
                 return;
             }
             const params = perfGetParams();
@@ -4202,10 +5358,11 @@
             statusText.textContent = '批量启动测试中...';
             perfRenderCapability(null);
             perfAppendOutput('开始批量启动测试：' + opts.count + ' 次，component=' + params.component, 'info');
+            perfAppendOutput('启动命令：' + perfFormatLaunchCommand(params.serial, params.launch), 'info');
             perfAppendOutput('批量参数：间隔 ' + opts.intervalSeconds + ' 秒，启动后采集 ' + opts.postLaunchCaptureSeconds + ' 秒，pm clear=' + opts.clearData + ', force-stop=' + opts.forceStop, 'info');
 
             try {
-                const result = await window.go.main.App.PerfRunLaunchBatch(params.serial, params.component, opts);
+                const result = await window.go.main.App.PerfRunLaunchBatch(params.serial, params.launch, opts);
                 if (result.resultDir) {
                     perfLastResultDir = result.resultDir;
                     document.getElementById('perfOpenResultBtn').disabled = false;
@@ -4240,13 +5397,34 @@
             }
         }
 
+        function perfRecordGroupKey(run) {
+            const pkg = run.packageName || '';
+            let component = run.component || '';
+            const slash = component.indexOf('/');
+            if (slash > 0) {
+                const name = component.slice(slash + 1);
+                const componentPkg = component.slice(0, slash);
+                component = componentPkg + '/' + (name.startsWith('.') ? componentPkg + name : (name.includes('.') ? name : componentPkg + '.' + name));
+            }
+            return JSON.stringify([run.serial || '', pkg, component, run.launchAction || '',
+                [...(run.launchCategories || [])].sort(), run.launchDataUri || '', !!run.forceStopBefore, !!run.clearDataBefore]);
+        }
+
         function perfRecordFromRun(run) {
             const startMs = perfParseGoTime(run.timestamp) || Date.now();
             const stopMs = perfParseGoTime(run.stoppedAt) || (startMs + (run.manualDurationMs || 0));
             return {
                 startTime: startMs,
                 stopTime: stopMs,
-                duration: run.manualDurationMs || Math.max(0, stopMs - startMs),
+                duration: run.success && run.stopReason === 'manual' ? (Number(run.manualDurationMs) || 0) : 0,
+                success: !!run.success,
+                stopReason: run.stopReason || '',
+                serial: run.serial || '',
+                component: run.component || '',
+                selected: true,
+                groupKey: perfRecordGroupKey(run),
+                groupLabel: [run.serial, run.component, run.launchAction, (run.launchCategories || []).join(','), run.launchDataUri,
+                    'force-stop=' + !!run.forceStopBefore, 'pm clear=' + !!run.clearDataBefore].filter(Boolean).join(' | '),
                 thisTimeMs: run.thisTimeMs || 0,
                 totalTimeMs: run.totalTimeMs || 0,
                 waitTimeMs: run.waitTimeMs || 0,
@@ -4422,16 +5600,17 @@
         function perfRenderRecords() {
             const tbody = document.getElementById('perfRecordsBody');
             if (perfRecords.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="padding:15px;text-align:center;color:#999;">暂无记录</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" style="padding:15px;text-align:center;color:#999;">暂无记录</td></tr>';
                 perfSyncAggregateReportState();
                 return;
             }
             tbody.innerHTML = perfRecords.map((r, i) => {
                 return `<tr style="border-bottom:1px solid #eee;">
-                    <td style="padding:8px 10px;">${i + 1}</td>
+                    <td style="padding:8px 10px;"><input type="checkbox" ${r.selected !== false ? 'checked' : ''} aria-label="选择记录 ${i + 1}" onchange="perfSelectRecord(${i}, this.checked)"> ${i + 1}</td>
+                    <td style="padding:8px 10px;min-width:220px;max-width:260px;overflow-wrap:anywhere;" title="${perfEscapeHtml(r.groupLabel)}">${perfEscapeHtml(r.serial)}<br>${perfEscapeHtml(r.component)}</td>
                     <td style="padding:8px 10px;font-size:12px;font-family:monospace;">${perfFormatTime(r.startTime)}</td>
                     <td style="padding:8px 10px;font-size:12px;font-family:monospace;">${perfFormatTime(r.stopTime)}</td>
-                    <td style="padding:8px 10px;text-align:right;font-weight:600;">${r.duration}</td>
+                    <td style="padding:8px 10px;text-align:right;font-weight:600;">${r.duration > 0 ? r.duration : (r.stopReason === 'timeout' ? '超时' : '-')}</td>
                     <td style="padding:8px 10px;text-align:right;">${r.thisTimeMs || '-'}</td>
                     <td style="padding:8px 10px;text-align:right;font-weight:600;">${r.totalTimeMs || '-'}</td>
                     <td style="padding:8px 10px;text-align:right;">${r.waitTimeMs || '-'}</td>
@@ -4443,12 +5622,33 @@
 
         function perfReportResultDirs() {
             return Array.from(new Set(perfRecords
+                .filter(record => record.selected !== false)
                 .map(record => String(record.resultDir || '').trim())
                 .filter(Boolean)));
         }
 
         function perfSyncAggregateReportState() {
             document.getElementById('perfAggregateReportBtn').disabled = perfReportResultDirs().length === 0;
+            const count = document.getElementById('perfOverallStartupCount');
+            if (count) count.textContent = String(perfReportResultDirs().length);
+            const selectAll = document.getElementById('perfSelectAllRecords');
+            if (selectAll) {
+                const selected = perfRecords.filter(r => r.selected !== false).length;
+                selectAll.checked = perfRecords.length > 0 && selected === perfRecords.length;
+                selectAll.indeterminate = selected > 0 && selected < perfRecords.length;
+            }
+        }
+
+        function perfSelectRecord(index, selected) {
+            if (perfRecords[index]) perfRecords[index].selected = selected;
+            document.getElementById('perfStatsArea').style.display = 'none';
+            perfSyncAggregateReportState();
+        }
+
+        function perfSelectAllRecords(selected) {
+            perfRecords.forEach(record => { record.selected = selected; });
+            document.getElementById('perfStatsArea').style.display = 'none';
+            perfRenderRecords();
         }
 
         function perfMetricStats(values) {
@@ -4476,18 +5676,25 @@
                 return;
             }
 
-            const summaries = metrics.map(metric => {
-                const values = perfRecords
-                    .map(record => Number(record[metric.field]))
-                    .filter(value => Number.isFinite(value) && value > 0);
-                if (values.length === 0) {
-                    return `<b>${metric.label}</b>：无有效数据`;
-                }
-                const stats = perfMetricStats(values);
-                return `<b>${metric.label}</b>：有效 ${values.length} 条，平均 <b>${stats.mean.toFixed(2)}</b> ms，标准差 <b>${stats.std.toFixed(2)}</b> ms`;
+            const groups = new Map();
+            const selected = perfRecords.filter(record => record.selected !== false);
+            if (selected.length === 0) { alert('请至少选择一条记录'); return; }
+            selected.forEach(record => {
+                if (!groups.has(record.groupKey)) groups.set(record.groupKey, []);
+                groups.get(record.groupKey).push(record);
             });
-
-            const html = `共 <b>${perfRecords.length}</b> 条记录；${summaries.join('；')}`;
+            const summaries = [...groups.values()].map(records => {
+                const valuesText = metrics.map(metric => {
+                    const values = records.filter(record => record.success)
+                        .map(record => Number(record[metric.field]))
+                        .filter(value => Number.isFinite(value) && value > 0);
+                    if (values.length === 0) return `<b>${metric.label}</b>：无有效数据`;
+                    const stats = perfMetricStats(values);
+                    return `<b>${metric.label}</b>：有效 ${values.length} 条，平均 <b>${stats.mean.toFixed(2)}</b> ms，标准差 <b>${stats.std.toFixed(2)}</b> ms`;
+                });
+                return '<div style="overflow-wrap:anywhere;margin-bottom:6px;">' + perfEscapeHtml(records[0].groupLabel) + '<br>' + valuesText.join('；') + '</div>';
+            });
+            const html = `已选 <b>${selected.length}</b> 条记录，按测试对象分为 <b>${groups.size}</b> 组。${summaries.join('')}`;
 
             document.getElementById('perfStatsArea').style.display = 'block';
             document.getElementById('perfStatsText').innerHTML = html;
@@ -4495,7 +5702,7 @@
 
         // 清除数据
         function perfClearRecords() {
-            if (perfTimerRunning || perfTimerAction || perfBatchRunning) {
+            if (perfTimerRunning || perfTimerAction || perfBatchRunning || perfOverallRunning) {
                 alert('测试正在运行，请先停止后再清除数据');
                 return;
             }
@@ -5056,7 +6263,7 @@
         async function stopGenerate() {
             try {
                 await window.go.main.App.StopGenerate();
-                appendOutput('generateOutput', '已停止生成', 'info');
+                appendOutput('generateOutput', '正在停止生成并保留已完成文件...', 'info');
             } catch (e) {
                 console.error('停止失败:', e);
             }
@@ -5122,6 +6329,12 @@
 
         // 初始化事件监听
         function initEventListeners() {
+            window.runtime.EventsOn('apk-install-progress', (data) => {
+                const active = devInstallActive;
+                if (!devInstallBusy || !active || data.serial !== active.serial || data.apkFile !== active.apkFile) return;
+                document.getElementById('devInstallStatus').textContent = `${data.serial}: ${data.message} (${active.index}/${active.total})`;
+                devAppendOutput(`${data.serial}: ${data.apkFile} - ${data.message}`, 'info');
+            });
             window.runtime.EventsOn('generate-output', (data) => {
                 const statusText = document.getElementById('statusText');
                 const btn = document.getElementById('generateBtn');
@@ -5178,10 +6391,26 @@
                 renderUpdateDownloadProgress(data);
             });
 
+            window.runtime.EventsOn('overall-performance-progress', (data) => {
+                const percent = Number(data.overallPercent) || 0;
+                const sampleText = data.samplesTotal
+                    ? '，样本 ' + (Number(data.sample) || 0) + '/' + data.samplesTotal
+                    : '';
+                const deviceText = data.deviceCount
+                    ? '，设备 ' + (Number(data.deviceIndex) || 0) + '/' + data.deviceCount
+                    : '';
+                perfOverallSetProgress(percent, (data.message || data.stage || '处理中') + sampleText + deviceText);
+                document.getElementById('perfOverallStatus').textContent = data.message || '综合性能测试运行中';
+                if (data.message) {
+                    perfOverallAppendOutput(data.message, data.stage === 'done' ? 'success' : 'info');
+                }
+            });
+
             window.runtime.EventsOn('perfetto-timeout', (data) => {
                 if (!perfTimerRunning || perfTimerAction === 'stop') return;
-                const stopMs = Date.now();
+                if (perfRecords.some(record => record.resultDir === data.resultDir)) return;
                 const currentLaunch = perfCurrentLaunch;
+                if (currentLaunch?.resultDir && data.resultDir !== currentLaunch.resultDir) return;
                 perfTimerRunning = false;
                 perfTimerAction = '';
                 perfCurrentLaunch = null;
@@ -5205,23 +6434,9 @@
                 if (data.message) {
                     perfAppendOutput(data.message, data.success ? 'success' : 'error');
                 }
-                if (currentLaunch) {
-                    perfRecords.push({
-                        startTime: perfStartMs,
-                        stopTime: stopMs,
-                        duration: stopMs - perfStartMs,
-                        thisTimeMs: currentLaunch.thisTimeMs || 0,
-                        totalTimeMs: currentLaunch.totalTimeMs || 0,
-                        waitTimeMs: currentLaunch.waitTimeMs || 0,
-                        traceFile: data.traceFile || '',
-                        logcatFile: data.logcatFile || '',
-                        reportFile: data.reportFile || '',
-                        timelineFile: data.timelineFile || '',
-                        traceSizeBytes: data.traceSizeBytes || 0,
-                        traceAnalyzable: !!data.traceAnalyzable,
-                        traceWarning: data.traceWarning || '',
-                        resultDir: data.resultDir || currentLaunch.resultDir || ''
-                    });
+                document.getElementById('perfStatusText').textContent = '已超时结束，不计入手动加载耗时';
+                if (data.run) {
+                    perfRecords.push(perfRecordFromRun(data.run));
                     perfRenderRecords();
                 }
             });
@@ -5619,6 +6834,8 @@
             devRenderRecordingControl();
             devRenderCommandHistory();
             perfSyncTimerControl();
+            perfOverallSyncControls();
+            perfOverallSetProgress(0, '未开始');
             document.getElementById('devPackageVersionInput').addEventListener('keydown', (event) => {
                 if (event.key === 'Enter') devApplyPackageVersionCommand();
                 if (event.key === 'Escape') devClosePackageVersionEditor();

@@ -31,6 +31,20 @@ type Engine interface {
 	Synthesize(text, outputPath string) error
 }
 
+type ContextEngine interface {
+	SynthesizeContext(context.Context, string, string) error
+}
+
+func SynthesizeContext(ctx context.Context, engine Engine, text, outputPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if engine, ok := engine.(ContextEngine); ok {
+		return engine.SynthesizeContext(ctx, text, outputPath)
+	}
+	return engine.Synthesize(text, outputPath)
+}
+
 // VoiceInfo describes one selectable voice in the GUI.
 type VoiceInfo struct {
 	ID     string `json:"id"`
@@ -134,6 +148,13 @@ func NewEdge(voice string) *Edge {
 }
 
 func (e *Edge) Synthesize(text, outputPath string) error {
+	return e.SynthesizeContext(context.Background(), text, outputPath)
+}
+
+func (e *Edge) SynthesizeContext(parent context.Context, text, outputPath string) error {
+	if err := parent.Err(); err != nil {
+		return err
+	}
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return fmt.Errorf("文本不能为空")
@@ -142,7 +163,7 @@ func (e *Edge) Synthesize(text, outputPath string) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 	defer cancel()
 
 	conn, err := dialEdge(ctx)
@@ -150,6 +171,8 @@ func (e *Edge) Synthesize(text, outputPath string) error {
 		return err
 	}
 	defer conn.Close()
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopCancel()
 
 	requestID := newConnectionID()
 	if err := conn.WriteMessage(websocket.TextMessage, []byte(edgeSpeechConfigMessage(requestID))); err != nil {
@@ -166,6 +189,9 @@ func (e *Edge) Synthesize(text, outputPath string) error {
 		}
 		messageType, data, err := conn.ReadMessage()
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("读取 Edge TTS 响应失败: %w", err)
 		}
 
@@ -269,6 +295,13 @@ func NewPiper(modelPath string) *Piper {
 }
 
 func (p *Piper) Synthesize(text, outputPath string) error {
+	return p.SynthesizeContext(context.Background(), text, outputPath)
+}
+
+func (p *Piper) SynthesizeContext(parent context.Context, text, outputPath string) error {
+	if err := parent.Err(); err != nil {
+		return err
+	}
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return fmt.Errorf("文本不能为空")
@@ -283,13 +316,16 @@ func (p *Piper) Synthesize(text, outputPath string) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, p.ExePath, "--model", p.ModelPath, "--output_file", outputPath)
 	cmd.Stdin = strings.NewReader(text)
 	output, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
 		return fmt.Errorf("Piper 语音合成超时")
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 	if err != nil {
 		return fmt.Errorf("Piper 语音合成失败: %s %w", strings.TrimSpace(string(output)), err)

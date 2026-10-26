@@ -24,10 +24,12 @@ import (
 	"time"
 
 	"voice-qa/internal/adb"
+	"voice-qa/internal/androidmanifest"
 	"voice-qa/internal/audio"
 	"voice-qa/internal/config"
 	"voice-qa/internal/logassert"
 	"voice-qa/internal/perfetto"
+	"voice-qa/internal/performance"
 	"voice-qa/internal/player"
 	"voice-qa/internal/tts"
 
@@ -48,12 +50,14 @@ var (
 	appVersion                   = "dev"
 	defaultUpdateURL             = cloudUpdateURL
 	errUpdateDownloadIdleTimeout = errors.New("更新包下载长时间无数据")
+	perfIntentIdentifierPattern  = regexp.MustCompile(`^[A-Za-z0-9_.$]+$`)
 )
 
 // App struct
 type App struct {
 	ctx                   context.Context
 	cfg                   *config.Config
+	configMu              sync.RWMutex
 	ttsEngine             tts.Engine // TTS 引擎接口
 	generateCmd           *exec.Cmd  // 当前生成进程
 	playCmd               *exec.Cmd  // 当前播放进程
@@ -64,6 +68,13 @@ type App struct {
 	perfLogcat            *perfetto.LogcatSession
 	perfResult            *perfetto.LaunchResult
 	perfTimer             *time.Timer
+	perfBusy              bool
+	perfStartedAt         time.Time
+	perfRelease           func()
+	perfStopMu            sync.Mutex
+	perfLastStop          PerfettoStopResult
+	deviceTaskMu          sync.Mutex
+	deviceTasks           map[string]string
 	manualRecorder        *adb.VideoRecorder
 	manualRecordPath      string
 	manualRecordSerial    string
@@ -71,11 +82,15 @@ type App struct {
 	cmdMu                 sync.Mutex // 保护 generateCmd 和 playCmd 的互斥锁
 	updateMu              sync.Mutex
 	downloadedUpdatePath  string
+	overallPerfMu         sync.Mutex
+	overallPerfCancel     context.CancelFunc
+	manifestScanMu        sync.Mutex
+	manifestScanCache     map[string]packageManifestScan
 }
 
 // NewApp 创建新的 App 实例
 func NewApp() *App {
-	return &App{}
+	return &App{manifestScanCache: make(map[string]packageManifestScan)}
 }
 
 // startup 在应用启动时调用
@@ -112,6 +127,10 @@ func (a *App) shutdown(ctx context.Context) {
 	a.manualRecordSerial = ""
 	a.manualRecordStartedAt = time.Time{}
 	a.cmdMu.Unlock()
+	a.overallPerfMu.Lock()
+	overallPerfCancel := a.overallPerfCancel
+	a.overallPerfCancel = nil
+	a.overallPerfMu.Unlock()
 
 	if genCancel != nil {
 		genCancel()
@@ -127,6 +146,9 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	if manualRecorder != nil {
 		_ = manualRecorder.Stop()
+	}
+	if overallPerfCancel != nil {
+		overallPerfCancel()
 	}
 
 	player.StopAllPlayback()
@@ -150,7 +172,9 @@ func (a *App) initTTSEngine() {
 
 // GetConfig 获取当前配置
 func (a *App) GetConfig() *config.Config {
-	return a.cfg
+	a.configMu.RLock()
+	defer a.configMu.RUnlock()
+	return cloneConfig(a.cfg)
 }
 
 // GetVoices 获取可用的声音列表
@@ -160,6 +184,8 @@ func (a *App) GetVoices() []tts.VoiceInfo {
 
 // SetVoice 设置当前声音
 func (a *App) SetVoice(voiceID string) {
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
 	a.cfg.VoiceID = voiceID
 	a.initTTSEngine()
 }
@@ -185,8 +211,10 @@ func (a *App) SaveConfig(cfg *config.Config) error {
 		return err
 	}
 
+	a.configMu.Lock()
 	a.cfg = nextCfg
 	a.initTTSEngine()
+	a.configMu.Unlock()
 	return nil
 }
 
@@ -331,7 +359,10 @@ func (a *App) GetSubDirs(baseDir string) ([]string, error) {
 
 // GetTextList 获取文本列表
 func (a *App) GetTextList() ([]string, error) {
-	textFile := a.cfg.TextFile
+	return readTextList(a.GetConfig().TextFile)
+}
+
+func readTextList(textFile string) ([]string, error) {
 	if textFile == "" {
 		textFile = "text.txt"
 	}
@@ -346,7 +377,7 @@ func (a *App) GetTextList() ([]string, error) {
 
 	data, err := os.ReadFile(textFile)
 	if err != nil {
-		return []string{}, nil
+		return nil, err
 	}
 
 	// 处理 UTF-8 BOM (Windows 记事本可能添加)
@@ -476,6 +507,13 @@ func (a *App) GenerateBatch(texts []string, simple bool) []GenerateResult {
 
 // generateFullAudio 根据模板生成完整音频
 func (a *App) generateFullAudio(text, outputPath string) error {
+	a.configMu.RLock()
+	cfg, engine := cloneConfig(a.cfg), a.ttsEngine
+	a.configMu.RUnlock()
+	return generateFullAudioContext(context.Background(), cfg, engine, text, outputPath)
+}
+
+func generateFullAudioContext(ctx context.Context, cfg *config.Config, engine tts.Engine, text, outputPath string) error {
 	// 创建临时目录
 	tmpDir, err := os.MkdirTemp("", "tts-")
 	if err != nil {
@@ -484,7 +522,7 @@ func (a *App) generateFullAudio(text, outputPath string) error {
 	defer os.RemoveAll(tmpDir)
 
 	// 获取模板
-	template := a.cfg.GetTemplate()
+	template := cfg.GetTemplate()
 
 	// 用于存储生成的语音文件
 	voiceFiles := make(map[string]string)
@@ -492,6 +530,9 @@ func (a *App) generateFullAudio(text, outputPath string) error {
 
 	// 第一遍：生成所有语音文件
 	for _, seg := range template {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if seg.Type == "voice" {
 			voiceText := seg.Text
 			if voiceText == "$MAIN" {
@@ -499,7 +540,7 @@ func (a *App) generateFullAudio(text, outputPath string) error {
 			}
 
 			voiceFile := filepath.Join(tmpDir, fmt.Sprintf("voice_%d.wav", voiceIndex))
-			if err := a.ttsEngine.Synthesize(voiceText, voiceFile); err != nil {
+			if err := tts.SynthesizeContext(ctx, engine, voiceText, voiceFile); err != nil {
 				return fmt.Errorf("生成语音失败 [%s]: %w", voiceText, err)
 			}
 			voiceFiles[seg.Text] = voiceFile
@@ -523,6 +564,9 @@ func (a *App) generateFullAudio(text, outputPath string) error {
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	return audio.ConcatWAVFiles(segments, outputPath)
 }
 
@@ -1195,25 +1239,29 @@ func (a *App) InstallApk(serial, apkPath string) InstallApkResult {
 	if err != nil {
 		return InstallApkResult{ApkFile: baseName, Success: false, Message: err.Error()}
 	}
-
-	cmd := adb.Command("-s", resolvedSerial, "install", "-r", apkPath)
-	hideConsoleWindow(cmd)
-	output, err := cmd.CombinedOutput()
-	outStr := strings.TrimSpace(string(output))
+	release, err := a.acquireDeviceTasks([]string{resolvedSerial}, "安装 APK")
 	if err != nil {
-		message := err.Error()
-		if outStr != "" {
-			message = fmt.Sprintf("%s: %v", outStr, err)
+		return InstallApkResult{Serial: resolvedSerial, ApkFile: baseName, Message: err.Error()}
+	}
+	defer release()
+
+	parent := a.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 15*time.Minute)
+	defer cancel()
+	message, err := adb.InstallAPK(ctx, resolvedSerial, apkPath, func(message string) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "apk-install-progress", map[string]string{
+				"serial": resolvedSerial, "apkFile": baseName, "message": message,
+			})
 		}
-		return InstallApkResult{Serial: resolvedSerial, ApkFile: baseName, Success: false, Message: message}
+	})
+	if err != nil {
+		return InstallApkResult{Serial: resolvedSerial, ApkFile: baseName, Message: err.Error()}
 	}
-	if strings.Contains(outStr, "Success") {
-		return InstallApkResult{Serial: resolvedSerial, ApkFile: baseName, Success: true, Message: "安装成功"}
-	}
-	if outStr == "" {
-		outStr = "ADB 未返回安装成功标记"
-	}
-	return InstallApkResult{Serial: resolvedSerial, ApkFile: baseName, Success: false, Message: outStr}
+	return InstallApkResult{Serial: resolvedSerial, ApkFile: baseName, Success: true, Message: message}
 }
 
 // AdbCommandResult ADB 命令执行结果
@@ -2662,29 +2710,39 @@ func (a *App) ResolveLaunchComponent(serial, packageName string) AdbResult {
 		return AdbResult{Success: false, Message: "请先选择应用包名"}
 	}
 
-	cmd := adb.Command("-s", serial, "shell", "cmd", "package", "resolve-activity", "--brief", packageName)
-	hideConsoleWindow(cmd)
-	output, err := cmd.CombinedOutput()
-	raw := strings.TrimSpace(string(output))
-	if err != nil {
-		return AdbResult{Success: false, Message: fmt.Sprintf("解析启动 Activity 失败: %s %v", raw, err)}
+	launcherTarget := PerfLaunchTarget{
+		Action:     "android.intent.action.MAIN",
+		Categories: []string{"android.intent.category.LAUNCHER"},
+	}
+	output, err := runPackageIntentQuery(serial, packageName, "resolve-activity", launcherTarget)
+	components := parseComponentQueryOutput(output, packageName)
+	if len(components) > 0 {
+		return AdbResult{Success: true, Message: components[0]}
 	}
 
-	lines := strings.Split(raw, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(strings.TrimSuffix(lines[i], "\r"))
-		if line == "" || strings.HasPrefix(line, "priority=") || strings.Contains(strings.ToLower(line), "no activity") {
-			continue
-		}
-		if validatePerfComponent(line) == nil {
-			return AdbResult{Success: true, Message: line}
-		}
+	// Older and customized Android builds may not support --components. Keep the
+	// package shorthand as a compatibility fallback.
+	cmd := adb.Command("-s", serial, "shell", "cmd", "package", "resolve-activity", "--brief", packageName)
+	hideConsoleWindow(cmd)
+	fallbackOutput, fallbackErr := cmd.CombinedOutput()
+	components = parseComponentQueryOutput(string(fallbackOutput), packageName)
+	if len(components) > 0 {
+		return AdbResult{Success: true, Message: components[0]}
+	}
+	if err != nil && fallbackErr != nil {
+		raw := strings.TrimSpace(strings.Join([]string{output, string(fallbackOutput)}, "\n"))
+		return AdbResult{Success: false, Message: fmt.Sprintf("解析启动 Activity 失败: %s %v", raw, fallbackErr)}
 	}
 	return AdbResult{Success: false, Message: "未找到该包的 launcher Activity，请手动填写完整 Component"}
 }
 
 // GetPackageComponents lists likely Activity components for a package.
 func (a *App) GetPackageComponents(serial, packageName string) PackageComponentsResult {
+	return a.GetPackageComponentsForLaunch(serial, packageName, PerfLaunchTarget{})
+}
+
+// GetPackageComponentsForLaunch ranks Activity components against the current Intent.
+func (a *App) GetPackageComponentsForLaunch(serial, packageName string, target PerfLaunchTarget) PackageComponentsResult {
 	serial = strings.TrimSpace(serial)
 	packageName = strings.TrimSpace(packageName)
 	if serial == "" {
@@ -2693,11 +2751,71 @@ func (a *App) GetPackageComponents(serial, packageName string) PackageComponents
 	if packageName == "" {
 		return PackageComponentsResult{Success: false, Message: "请先选择应用包名"}
 	}
+	criteria, err := normalizePerfIntentTarget(target)
+	if err != nil {
+		return PackageComponentsResult{Success: false, Message: err.Error()}
+	}
+
+	ranker := newPackageComponentRanker(packageName, hasPerfIntentCriteria(criteria))
+	if validatePerfComponent(target.Component) == nil && strings.HasPrefix(strings.TrimSpace(target.Component), packageName+"/") {
+		ranker.addGrouped(strings.TrimSpace(target.Component), 700, "当前填写", "other")
+	}
+
+	recommended := ""
+	if hasPerfIntentCriteria(criteria) {
+		output, _ := runPackageIntentQuery(serial, packageName, "resolve-activity", criteria)
+		resolved := parseComponentQueryOutput(output, packageName)
+		if len(resolved) > 0 {
+			recommended = resolved[0]
+			ranker.addGrouped(resolved[0], 1200, "当前 Intent 精确匹配", "intent")
+		}
+
+		output, _ = runPackageIntentQuery(serial, packageName, "query-activities", criteria)
+		matchedComponents := parseComponentQueryOutput(output, packageName)
+		for index, component := range matchedComponents {
+			ranker.addGrouped(component, 1100-min(index, 50), "可处理当前 Intent", "intent")
+		}
+		if recommended == "" && len(matchedComponents) > 0 {
+			recommended = matchedComponents[0]
+		}
+	}
 
 	launcherResult := a.ResolveLaunchComponent(serial, packageName)
 	launcher := ""
 	if launcherResult.Success && validatePerfComponent(launcherResult.Message) == nil {
 		launcher = launcherResult.Message
+		ranker.addGrouped(launcher, 1000, "桌面启动入口", "external")
+		if recommended == "" {
+			recommended = launcher
+		}
+	}
+
+	launcherQueries := []struct {
+		target PerfLaunchTarget
+		score  int
+		reason string
+	}{
+		{
+			target: PerfLaunchTarget{Action: "android.intent.action.MAIN", Categories: []string{"android.intent.category.LAUNCHER"}},
+			score:  950,
+			reason: "桌面启动入口",
+		},
+		{
+			target: PerfLaunchTarget{Action: "android.intent.action.MAIN", Categories: []string{"android.intent.category.LEANBACK_LAUNCHER"}},
+			score:  900,
+			reason: "电视启动入口",
+		},
+		{
+			target: PerfLaunchTarget{Action: "android.intent.action.MAIN"},
+			score:  850,
+			reason: "MAIN Activity",
+		},
+	}
+	for _, query := range launcherQueries {
+		output, _ := runPackageIntentQuery(serial, packageName, "query-activities", query.target)
+		for index, component := range parseComponentQueryOutput(output, packageName) {
+			ranker.addGrouped(component, query.score-min(index, 50), query.reason, "external")
+		}
 	}
 
 	var dumpOutput string
@@ -2716,21 +2834,674 @@ func (a *App) GetPackageComponents(serial, packageName string) PackageComponents
 		}
 	}
 
-	components := parsePackageComponents(dumpOutput, packageName)
-	components = prependComponent(components, launcher)
-	if len(components) == 0 {
+	for _, component := range parsePackageComponents(dumpOutput, packageName) {
+		ranker.addGrouped(component, 300, "Activity 清单候选", "other")
+	}
+	candidates := ranker.ranked()
+	if len(candidates) == 0 {
 		if dumpErr != nil {
 			return PackageComponentsResult{Success: false, Message: fmt.Sprintf("读取 Component 失败: %v", dumpErr)}
 		}
 		return PackageComponentsResult{Success: false, Message: "未解析到 Activity Component，请手动填写"}
 	}
+	if recommended == "" {
+		recommended = candidates[0].Component
+	}
+	components := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		components = append(components, candidate.Component)
+	}
 
 	return PackageComponentsResult{
-		Success:    true,
-		Message:    fmt.Sprintf("已解析到 %d 个可能的 Component", len(components)),
-		Components: components,
-		Launcher:   launcher,
+		Success:     true,
+		Message:     fmt.Sprintf("已找到 %d 个 Component 候选，并按当前启动参数的匹配度排序", len(components)),
+		Components:  components,
+		Candidates:  candidates,
+		Launcher:    launcher,
+		Recommended: recommended,
 	}
+}
+
+type packageManifestActivity struct {
+	Activity           androidmanifest.Activity
+	ApplicationEnabled bool
+	SourceAPK          string
+}
+
+type packageManifestScan struct {
+	VersionCode        string
+	APKCount           int
+	ApplicationEnabled bool
+	Activities         []packageManifestActivity
+	Warnings           []string
+}
+
+// DeepScanPackageComponents pulls installed APK manifests only when explicitly
+// requested. Results are cached by device, package, and version code.
+func (a *App) DeepScanPackageComponents(serial, packageName string, target PerfLaunchTarget) PackageComponentsResult {
+	serial = strings.TrimSpace(serial)
+	packageName = strings.TrimSpace(packageName)
+	if serial == "" {
+		return PackageComponentsResult{Success: false, Message: "请先选择设备"}
+	}
+	if packageName == "" {
+		return PackageComponentsResult{Success: false, Message: "请先选择应用包名"}
+	}
+	criteria, err := normalizePerfIntentTarget(target)
+	if err != nil {
+		return PackageComponentsResult{Success: false, Message: err.Error()}
+	}
+
+	quick := a.GetPackageComponentsForLaunch(serial, packageName, criteria)
+	scan, cacheHit, err := a.loadPackageManifestScan(serial, packageName)
+	if err != nil {
+		if quick.Success {
+			warning := "APK Manifest 深度扫描失败: " + err.Error()
+			quick.Message += "；已保留快速匹配结果，但" + warning
+			quick.Warnings = []string{warning}
+			return quick
+		}
+		return PackageComponentsResult{Success: false, Message: "APK Manifest 深度扫描失败: " + err.Error()}
+	}
+
+	ranker := newPackageComponentRanker(packageName, hasPerfIntentCriteria(criteria))
+	for _, candidate := range quick.Candidates {
+		ranker.merge(candidate, false)
+	}
+	if len(quick.Candidates) == 0 {
+		for _, component := range quick.Components {
+			ranker.addGrouped(component, 300, "Activity 清单候选", "other")
+		}
+	}
+
+	externalCount := 0
+	internalCount := 0
+	for _, record := range scan.Activities {
+		activity := record.Activity
+		component := manifestActivityComponent(packageName, activity.Name)
+		if component == "" {
+			continue
+		}
+		exported := activity.EffectiveExported()
+		enabled := activity.EffectiveEnabled(scan.ApplicationEnabled && record.ApplicationEnabled)
+		launchable := exported && enabled
+		group := "internal"
+		score := 120
+		reason := "内部 Activity（exported=false）"
+		if !enabled {
+			internalCount++
+			reason = "已禁用 Activity"
+		} else if launchable {
+			externalCount++
+			group = "external"
+			score = 500
+			reason = "Manifest 可外部启动"
+			if manifestHasLauncherFilter(activity.IntentFilters) {
+				score = 920
+				reason = "Manifest 启动入口"
+			}
+			if hasPerfIntentCriteria(criteria) && manifestMatchesIntent(activity.IntentFilters, criteria) {
+				group = "intent"
+				score = 1080
+				reason = "Manifest 可处理当前 Intent"
+			}
+		} else {
+			internalCount++
+		}
+
+		ranker.merge(PackageComponentCandidate{
+			Component:        component,
+			Reason:           reason,
+			Score:            score,
+			Group:            group,
+			Manifest:         true,
+			Exported:         exported,
+			ExportedKnown:    true,
+			ExportedDeclared: activity.ExportedSet,
+			Enabled:          enabled,
+			EnabledKnown:     true,
+			EnabledDeclared:  activity.EnabledSet,
+			Launchable:       launchable,
+			ActivityAlias:    activity.Alias,
+			TargetActivity:   manifestActivityName(packageName, activity.TargetActivity),
+			SourceAPK:        record.SourceAPK,
+			IntentFilters:    packageIntentFilters(activity.IntentFilters),
+		}, true)
+	}
+
+	candidates := ranker.ranked()
+	components := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		components = append(components, candidate.Component)
+	}
+	recommended := findRecommendedManifestCandidate(candidates, quick.Recommended, packageName)
+	cacheLabel := "本次读取 APK"
+	if cacheHit {
+		cacheLabel = "命中版本缓存"
+	}
+	versionLabel := scan.VersionCode
+	if versionLabel == "" {
+		versionLabel = "未知"
+	}
+	message := fmt.Sprintf(
+		"Manifest 深度扫描完成：versionCode=%s，%d 个 APK，%d 个 Activity，%d 个可外部启动，%d 个内部或禁用；%s",
+		versionLabel, scan.APKCount, len(scan.Activities), externalCount, internalCount, cacheLabel,
+	)
+	if len(scan.Warnings) > 0 {
+		message += fmt.Sprintf("；%d 个 APK Manifest 读取失败", len(scan.Warnings))
+	}
+
+	return PackageComponentsResult{
+		Success:               len(candidates) > 0,
+		Message:               message,
+		Components:            components,
+		Candidates:            candidates,
+		Launcher:              quick.Launcher,
+		Recommended:           recommended,
+		DeepScanned:           true,
+		CacheHit:              cacheHit,
+		VersionCode:           scan.VersionCode,
+		ManifestActivityCount: len(scan.Activities),
+		APKCount:              scan.APKCount,
+		Warnings:              append([]string(nil), scan.Warnings...),
+	}
+}
+
+func (a *App) loadPackageManifestScan(serial, packageName string) (packageManifestScan, bool, error) {
+	versionCode, _ := queryPackageVersionCode(serial, packageName)
+	cacheKey := ""
+	if versionCode != "" {
+		cacheKey = serial + "\x00" + packageName + "\x00" + versionCode
+		a.manifestScanMu.Lock()
+		cached, exists := a.manifestScanCache[cacheKey]
+		a.manifestScanMu.Unlock()
+		if exists {
+			return cached, true, nil
+		}
+	}
+
+	pathsOutput, err := runManifestADB(30*time.Second, "-s", serial, "shell", "pm", "path", packageName)
+	if err != nil {
+		return packageManifestScan{}, false, fmt.Errorf("读取 APK 路径: %s", adbFailureText(pathsOutput, err))
+	}
+	apkPaths := parsePackageAPKPaths(pathsOutput)
+	if len(apkPaths) == 0 {
+		return packageManifestScan{}, false, fmt.Errorf("设备未返回 %s 的 APK 路径", packageName)
+	}
+	if len(apkPaths) > 64 {
+		return packageManifestScan{}, false, fmt.Errorf("APK split 数量异常: %d", len(apkPaths))
+	}
+	sort.SliceStable(apkPaths, func(i, j int) bool {
+		return strings.HasSuffix(apkPaths[i], "/base.apk") && !strings.HasSuffix(apkPaths[j], "/base.apk")
+	})
+
+	tempDir, err := os.MkdirTemp("", "voice-qa-manifest-")
+	if err != nil {
+		return packageManifestScan{}, false, fmt.Errorf("创建 Manifest 临时目录: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	scan := packageManifestScan{
+		VersionCode:        versionCode,
+		APKCount:           len(apkPaths),
+		ApplicationEnabled: true,
+	}
+	parsedCount := 0
+	for index, remotePath := range apkPaths {
+		baseName := filepath.Base(strings.ReplaceAll(remotePath, `\`, "/"))
+		localPath := filepath.Join(tempDir, fmt.Sprintf("%03d-%s", index, baseName))
+		pullOutput, pullErr := runManifestADB(5*time.Minute, "-s", serial, "pull", remotePath, localPath)
+		if pullErr != nil {
+			scan.Warnings = append(scan.Warnings, fmt.Sprintf("%s: %s", baseName, adbFailureText(pullOutput, pullErr)))
+			continue
+		}
+		manifest, parseErr := androidmanifest.ParseAPK(localPath)
+		if parseErr != nil {
+			scan.Warnings = append(scan.Warnings, fmt.Sprintf("%s: %v", baseName, parseErr))
+			continue
+		}
+		if manifest.PackageName != "" && manifest.PackageName != packageName {
+			scan.Warnings = append(scan.Warnings, fmt.Sprintf("%s: Manifest 包名为 %s", baseName, manifest.PackageName))
+			continue
+		}
+		parsedCount++
+		if strings.HasSuffix(remotePath, "/base.apk") {
+			scan.ApplicationEnabled = manifest.ApplicationEnabled
+		}
+		for _, activity := range manifest.Activities {
+			scan.Activities = append(scan.Activities, packageManifestActivity{
+				Activity:           activity,
+				ApplicationEnabled: manifest.ApplicationEnabled,
+				SourceAPK:          baseName,
+			})
+		}
+	}
+	if parsedCount == 0 {
+		return packageManifestScan{}, false, fmt.Errorf("未能读取任何 APK Manifest: %s", strings.Join(scan.Warnings, "；"))
+	}
+
+	if cacheKey != "" {
+		a.manifestScanMu.Lock()
+		if a.manifestScanCache == nil {
+			a.manifestScanCache = make(map[string]packageManifestScan)
+		}
+		packagePrefix := serial + "\x00" + packageName + "\x00"
+		for key := range a.manifestScanCache {
+			if key != cacheKey && strings.HasPrefix(key, packagePrefix) {
+				delete(a.manifestScanCache, key)
+			}
+		}
+		a.manifestScanCache[cacheKey] = scan
+		a.manifestScanMu.Unlock()
+	}
+	return scan, false, nil
+}
+
+func queryPackageVersionCode(serial, packageName string) (string, error) {
+	output, err := runManifestADB(30*time.Second, "-s", serial, "shell", "dumpsys", "package", packageName)
+	match := regexp.MustCompile(`\bversionCode=(\d+)`).FindStringSubmatch(output)
+	if len(match) >= 2 {
+		return match[1], nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("读取 versionCode: %s", adbFailureText(output, err))
+	}
+	return "", fmt.Errorf("未找到 versionCode")
+}
+
+func runManifestADB(timeout time.Duration, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := adb.CommandContext(ctx, args...)
+	hideConsoleWindow(cmd)
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return string(output), fmt.Errorf("命令超时")
+	}
+	return string(output), err
+}
+
+func adbFailureText(output string, err error) string {
+	message := strings.TrimSpace(output)
+	if message == "" {
+		return err.Error()
+	}
+	return message
+}
+
+func parsePackageAPKPaths(output string) []string {
+	seen := make(map[string]struct{})
+	paths := make([]string, 0)
+	for _, line := range strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "package:") {
+			continue
+		}
+		path := strings.TrimSpace(strings.TrimPrefix(trimmed, "package:"))
+		if path == "" || !strings.HasSuffix(strings.ToLower(path), ".apk") {
+			continue
+		}
+		if _, exists := seen[path]; exists {
+			continue
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+	return paths
+}
+
+func manifestActivityName(packageName, name string) string {
+	name = strings.TrimSpace(name)
+	switch {
+	case name == "":
+		return ""
+	case strings.HasPrefix(name, "."):
+		return packageName + name
+	case !strings.Contains(name, "."):
+		return packageName + "." + name
+	default:
+		return name
+	}
+}
+
+func manifestActivityComponent(packageName, name string) string {
+	className := manifestActivityName(packageName, name)
+	if className == "" {
+		return ""
+	}
+	return packageName + "/" + className
+}
+
+func manifestHasLauncherFilter(filters []androidmanifest.IntentFilter) bool {
+	for _, filter := range filters {
+		if containsString(filter.Actions, "android.intent.action.MAIN") &&
+			(containsString(filter.Categories, "android.intent.category.LAUNCHER") ||
+				containsString(filter.Categories, "android.intent.category.LEANBACK_LAUNCHER")) {
+			return true
+		}
+	}
+	return false
+}
+
+func manifestMatchesIntent(filters []androidmanifest.IntentFilter, target PerfLaunchTarget) bool {
+	for _, filter := range filters {
+		if target.Action != "" && !containsString(filter.Actions, target.Action) {
+			continue
+		}
+		categoriesMatch := true
+		for _, category := range target.Categories {
+			if !containsString(filter.Categories, category) {
+				categoriesMatch = false
+				break
+			}
+		}
+		if !categoriesMatch {
+			continue
+		}
+		if target.DataURI != "" && !manifestDataMatches(filter.Data, target.DataURI) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func manifestDataMatches(specs []androidmanifest.DataSpec, rawURI string) bool {
+	parsed, err := url.Parse(rawURI)
+	if err != nil || parsed.Scheme == "" || len(specs) == 0 {
+		return false
+	}
+	schemes := make([]string, 0)
+	hosts := make([]string, 0)
+	ports := make([]string, 0)
+	paths := make([]string, 0)
+	pathPrefixes := make([]string, 0)
+	pathPatterns := make([]string, 0)
+	for _, spec := range specs {
+		schemes = appendUniqueString(schemes, spec.Scheme)
+		hosts = appendUniqueString(hosts, spec.Host)
+		ports = appendUniqueString(ports, spec.Port)
+		paths = appendUniqueString(paths, spec.Path)
+		pathPrefixes = appendUniqueString(pathPrefixes, spec.PathPrefix)
+		pathPatterns = appendUniqueString(pathPatterns, spec.PathPattern)
+	}
+	if len(schemes) == 0 || !containsString(schemes, parsed.Scheme) {
+		return false
+	}
+	if len(hosts) > 0 && !manifestHostMatches(hosts, parsed.Hostname()) {
+		return false
+	}
+	if len(ports) > 0 && !containsString(ports, parsed.Port()) {
+		return false
+	}
+	if len(paths)+len(pathPrefixes)+len(pathPatterns) == 0 {
+		return true
+	}
+	for _, path := range paths {
+		if parsed.EscapedPath() == path || parsed.Path == path {
+			return true
+		}
+	}
+	for _, prefix := range pathPrefixes {
+		if strings.HasPrefix(parsed.Path, prefix) {
+			return true
+		}
+	}
+	for _, pattern := range pathPatterns {
+		if manifestSimpleGlobMatch(pattern, parsed.Path) {
+			return true
+		}
+	}
+	return false
+}
+
+func manifestHostMatches(hosts []string, host string) bool {
+	for _, candidate := range hosts {
+		if strings.HasPrefix(candidate, "*") && strings.HasSuffix(strings.ToLower(host), strings.ToLower(candidate[1:])) {
+			return true
+		}
+		if strings.EqualFold(candidate, host) {
+			return true
+		}
+	}
+	return false
+}
+
+func manifestSimpleGlobMatch(pattern, value string) bool {
+	if pattern == value {
+		return true
+	}
+	quoted := regexp.QuoteMeta(pattern)
+	quoted = strings.ReplaceAll(quoted, `\.\*`, `.*`)
+	quoted = strings.ReplaceAll(quoted, `\*`, `.*`)
+	matched, err := regexp.MatchString("^"+quoted+"$", value)
+	return err == nil && matched
+}
+
+func appendUniqueString(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" || containsString(values, value) {
+		return values
+	}
+	return append(values, value)
+}
+
+func packageIntentFilters(filters []androidmanifest.IntentFilter) []PackageIntentFilter {
+	result := make([]PackageIntentFilter, 0, len(filters))
+	for _, filter := range filters {
+		data := make([]string, 0, len(filter.Data))
+		for _, spec := range filter.Data {
+			parts := make([]string, 0, 7)
+			for _, field := range []struct {
+				name  string
+				value string
+			}{
+				{name: "scheme", value: spec.Scheme},
+				{name: "host", value: spec.Host},
+				{name: "port", value: spec.Port},
+				{name: "path", value: spec.Path},
+				{name: "pathPrefix", value: spec.PathPrefix},
+				{name: "pathPattern", value: spec.PathPattern},
+				{name: "mimeType", value: spec.MIMEType},
+			} {
+				if field.value != "" {
+					parts = append(parts, field.name+"="+field.value)
+				}
+			}
+			if len(parts) > 0 {
+				data = append(data, strings.Join(parts, ", "))
+			}
+		}
+		result = append(result, PackageIntentFilter{
+			Actions:    append([]string(nil), filter.Actions...),
+			Categories: append([]string(nil), filter.Categories...),
+			Data:       data,
+		})
+	}
+	return result
+}
+
+func findRecommendedManifestCandidate(candidates []PackageComponentCandidate, preferred, packageName string) string {
+	preferredIdentity := componentIdentity(preferred, packageName)
+	for _, candidate := range candidates {
+		if candidate.Group != "internal" && componentIdentity(candidate.Component, packageName) == preferredIdentity {
+			return candidate.Component
+		}
+	}
+	for _, candidate := range candidates {
+		if candidate.Group == "intent" || candidate.Group == "external" {
+			return candidate.Component
+		}
+	}
+	return ""
+}
+
+func runPackageIntentQuery(serial, packageName, operation string, target PerfLaunchTarget) (string, error) {
+	args := packageIntentQueryArgs(serial, packageName, operation, target)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := adb.CommandContext(ctx, append(args[:2], adb.ShellArgs(args[3:]...)...)...)
+	hideConsoleWindow(cmd)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
+func packageIntentQueryArgs(serial, packageName, operation string, target PerfLaunchTarget) []string {
+	args := []string{"-s", serial, "shell", "cmd", "package", operation, "--brief", "--components"}
+	if target.Action != "" {
+		args = append(args, "-a", target.Action)
+	}
+	for _, category := range target.Categories {
+		args = append(args, "-c", category)
+	}
+	if target.DataURI != "" {
+		args = append(args, "-d", target.DataURI)
+	}
+	args = append(args, "-p", packageName)
+	return args
+}
+
+func hasPerfIntentCriteria(target PerfLaunchTarget) bool {
+	return target.Action != "" || len(target.Categories) > 0 || target.DataURI != ""
+}
+
+type packageComponentRanker struct {
+	packageName string
+	intentMode  bool
+	items       map[string]PackageComponentCandidate
+}
+
+func newPackageComponentRanker(packageName string, intentMode bool) *packageComponentRanker {
+	return &packageComponentRanker{
+		packageName: packageName,
+		intentMode:  intentMode,
+		items:       make(map[string]PackageComponentCandidate),
+	}
+}
+
+func (r *packageComponentRanker) add(component string, score int, reason string) {
+	r.addGrouped(component, score, reason, "other")
+}
+
+func (r *packageComponentRanker) addGrouped(component string, score int, reason, group string) {
+	r.merge(PackageComponentCandidate{
+		Component:  component,
+		Reason:     reason,
+		Score:      score,
+		Group:      group,
+		Launchable: group == "intent" || group == "external",
+	}, true)
+}
+
+func (r *packageComponentRanker) merge(candidate PackageComponentCandidate, addNamePreference bool) {
+	component := strings.Trim(candidate.Component, " \t\r\n,;)")
+	if validatePerfComponent(component) != nil || !strings.HasPrefix(component, r.packageName+"/") {
+		return
+	}
+	candidate.Component = component
+	if candidate.Group == "" {
+		candidate.Group = "other"
+	}
+	if addNamePreference {
+		candidate.Score += componentNamePreference(component, r.intentMode)
+	}
+
+	identity := componentIdentity(component, r.packageName)
+	current, exists := r.items[identity]
+	if !exists {
+		r.items[identity] = candidate
+		return
+	}
+
+	result := current
+	if candidate.Score > current.Score {
+		result.Component = candidate.Component
+		result.Reason = candidate.Reason
+		result.Score = candidate.Score
+		result.Group = candidate.Group
+		result.Launchable = candidate.Launchable
+	}
+	if candidate.Manifest {
+		result.Manifest = true
+		result.Exported = candidate.Exported
+		result.ExportedKnown = candidate.ExportedKnown
+		result.ExportedDeclared = candidate.ExportedDeclared
+		result.Enabled = candidate.Enabled
+		result.EnabledKnown = candidate.EnabledKnown
+		result.EnabledDeclared = candidate.EnabledDeclared
+		result.ActivityAlias = candidate.ActivityAlias
+		result.TargetActivity = candidate.TargetActivity
+		result.SourceAPK = candidate.SourceAPK
+		result.IntentFilters = candidate.IntentFilters
+		result.Launchable = candidate.Launchable
+		if !candidate.Launchable {
+			result.Reason = candidate.Reason
+			result.Group = candidate.Group
+		} else if result.Group == "other" {
+			result.Group = candidate.Group
+		}
+	}
+	r.items[identity] = result
+}
+
+func (r *packageComponentRanker) ranked() []PackageComponentCandidate {
+	result := make([]PackageComponentCandidate, 0, len(r.items))
+	for _, candidate := range r.items {
+		result = append(result, candidate)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Score != result[j].Score {
+			return result[i].Score > result[j].Score
+		}
+		return result[i].Component < result[j].Component
+	})
+	return result
+}
+
+func componentIdentity(component, packageName string) string {
+	component = strings.TrimSpace(component)
+	parts := strings.SplitN(component, "/", 2)
+	if len(parts) != 2 {
+		return component
+	}
+	className := strings.TrimSpace(parts[1])
+	switch {
+	case strings.HasPrefix(className, "."):
+		className = packageName + className
+	case !strings.Contains(className, "."):
+		className = packageName + "." + className
+	}
+	return parts[0] + "/" + className
+}
+
+func componentNamePreference(component string, intentMode bool) int {
+	lower := strings.ToLower(component[strings.LastIndex(component, "/")+1:])
+	score := 0
+	if intentMode {
+		for _, keyword := range []string{"deeplink", "deep_link", "router", "scheme", "dispatch", "intent"} {
+			if strings.Contains(lower, keyword) {
+				score += 80
+				break
+			}
+		}
+	}
+	for _, preference := range []struct {
+		keyword string
+		score   int
+	}{
+		{keyword: "splash", score: 45},
+		{keyword: "launcher", score: 40},
+		{keyword: "main", score: 35},
+		{keyword: "home", score: 25},
+		{keyword: "entry", score: 20},
+		{keyword: "start", score: 15},
+	} {
+		if strings.Contains(lower, preference.keyword) {
+			score += preference.score
+			break
+		}
+	}
+	return score
 }
 
 func validatePerfComponent(component string) error {
@@ -2742,7 +3513,250 @@ func validatePerfComponent(component string) error {
 	if slash == len(component)-1 {
 		return fmt.Errorf("请输入完整的 Component 名称（包名/Activity名），当前缺少 Activity")
 	}
+	if !perfIntentIdentifierPattern.MatchString(component[:slash]) || !perfIntentIdentifierPattern.MatchString(component[slash+1:]) {
+		return fmt.Errorf("Component 包名或 Activity 名称含有无效字符")
+	}
 	return nil
+}
+
+func normalizePerfLaunchTarget(target PerfLaunchTarget) (PerfLaunchTarget, error) {
+	target.Component = strings.TrimSpace(target.Component)
+	if err := validatePerfComponent(target.Component); err != nil {
+		return PerfLaunchTarget{}, err
+	}
+	return normalizePerfIntentTarget(target)
+}
+
+func normalizePerfIntentTarget(target PerfLaunchTarget) (PerfLaunchTarget, error) {
+	target.Component = strings.TrimSpace(target.Component)
+	target.Action = strings.TrimSpace(target.Action)
+	target.DataURI = strings.TrimSpace(target.DataURI)
+	if target.Action != "" && !perfIntentIdentifierPattern.MatchString(target.Action) {
+		return PerfLaunchTarget{}, fmt.Errorf("Intent Action 格式无效，例如 android.intent.action.VIEW")
+	}
+
+	categories := make([]string, 0, len(target.Categories))
+	seen := make(map[string]struct{}, len(target.Categories))
+	for _, raw := range target.Categories {
+		category := strings.TrimSpace(raw)
+		if category == "" {
+			continue
+		}
+		if !perfIntentIdentifierPattern.MatchString(category) {
+			return PerfLaunchTarget{}, fmt.Errorf("Intent Category 格式无效: %s", category)
+		}
+		if _, exists := seen[category]; exists {
+			continue
+		}
+		seen[category] = struct{}{}
+		categories = append(categories, category)
+	}
+	if len(categories) > 16 {
+		return PerfLaunchTarget{}, fmt.Errorf("Intent Category 最多支持 16 项")
+	}
+	target.Categories = categories
+
+	if target.DataURI != "" {
+		if strings.IndexFunc(target.DataURI, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+			return PerfLaunchTarget{}, fmt.Errorf("Intent Data URI 不能包含控制字符")
+		}
+		parsed, err := url.Parse(target.DataURI)
+		if err != nil || parsed.Scheme == "" {
+			return PerfLaunchTarget{}, fmt.Errorf("Intent Data URI 格式无效，例如 aiquestion://open_page")
+		}
+	}
+	return target, nil
+}
+
+func perfLaunchArgs(target PerfLaunchTarget) []string {
+	args := []string{"shell", "am", "start", "-W", "-n", target.Component}
+	if target.Action != "" {
+		args = append(args, "-a", target.Action)
+	}
+	for _, category := range target.Categories {
+		args = append(args, "-c", category)
+	}
+	if target.DataURI != "" {
+		args = append(args, "-d", target.DataURI)
+	}
+	return args
+}
+
+func perfLaunchCommandText(serial string, target PerfLaunchTarget) string {
+	args := append([]string{"adb", "-s", strings.TrimSpace(serial)}, adb.ShellArgs(perfLaunchArgs(target)[1:]...)...)
+	parts := make([]string, 0, len(args))
+	for index, arg := range args {
+		alwaysQuote := index > 0 && args[index-1] == "-d"
+		parts = append(parts, quotePerfCommandArg(arg, alwaysQuote))
+	}
+	return strings.Join(parts, " ")
+}
+
+func quotePerfCommandArg(value string, always bool) string {
+	if !always && value != "" && !strings.ContainsAny(value, " \t\r\n\"'&|<>^") {
+		return value
+	}
+	escaped := strings.ReplaceAll(value, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	return `"` + escaped + `"`
+}
+
+func newPerfLaunchCommand(serial string, target PerfLaunchTarget) *exec.Cmd {
+	args := append([]string{"-s", serial}, adb.ShellArgs(perfLaunchArgs(target)[1:]...)...)
+	return adb.Command(args...)
+}
+
+// VerifyPackageLaunch executes the configured public entry and reports the
+// foreground Activity reached after the app has settled.
+func (a *App) VerifyPackageLaunch(serial string, target PerfLaunchTarget, opts PackageLaunchVerificationOptions) PackageLaunchVerificationResult {
+	serial = strings.TrimSpace(serial)
+	if serial == "" {
+		return PackageLaunchVerificationResult{Success: false, Message: "请先选择设备"}
+	}
+	normalized, err := normalizePerfLaunchTarget(target)
+	if err != nil {
+		return PackageLaunchVerificationResult{Success: false, Message: err.Error()}
+	}
+	release, err := a.acquireDeviceTasks([]string{serial}, "验证启动入口")
+	if err != nil {
+		return PackageLaunchVerificationResult{Message: err.Error()}
+	}
+	defer release()
+	packageName := strings.SplitN(normalized.Component, "/", 2)[0]
+	result := PackageLaunchVerificationResult{
+		LaunchComponent: normalized.Component,
+		LaunchCommand:   perfLaunchCommandText(serial, normalized),
+	}
+
+	if opts.ForceStop {
+		forceOutput, forceErr := runManifestADB(20*time.Second, "-s", serial, "shell", "am", "force-stop", packageName)
+		if forceErr != nil {
+			result.Message = "验证前 force-stop 失败: " + adbFailureText(forceOutput, forceErr)
+			result.Output = strings.TrimSpace(forceOutput)
+			return result
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	launchArgs := append([]string{"-s", serial}, adb.ShellArgs(perfLaunchArgs(normalized)[1:]...)...)
+	cmd := adb.CommandContext(ctx, launchArgs...)
+	hideConsoleWindow(cmd)
+	launchOutput, launchErr := cmd.CombinedOutput()
+	result.Output = strings.TrimSpace(string(launchOutput))
+	if launchErr != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			result.Message = "启动入口验证超时"
+		} else {
+			result.Message = "启动入口验证失败: " + adbFailureText(string(launchOutput), launchErr)
+		}
+		return result
+	}
+
+	waitMilliseconds := opts.WaitMilliseconds
+	if waitMilliseconds <= 0 {
+		waitMilliseconds = 1500
+	}
+	waitMilliseconds = max(300, min(waitMilliseconds, 10000))
+	time.Sleep(time.Duration(waitMilliseconds) * time.Millisecond)
+
+	finalActivity, evidence, queryErrors := readForegroundActivity(serial, packageName)
+	result.FinalActivity = finalActivity
+	result.Evidence = evidence
+	if evidence != "" {
+		result.Output = strings.TrimSpace(result.Output + "\n\n前台窗口证据:\n" + evidence)
+	}
+	if finalActivity == "" {
+		result.Message = "启动命令已执行，但未读取到最终前台 Activity"
+		if len(queryErrors) > 0 {
+			result.Message += "：" + strings.Join(queryErrors, "；")
+		}
+		return result
+	}
+
+	result.Success = true
+	result.SamePackage = strings.HasPrefix(finalActivity, packageName+"/")
+	result.Message = fmt.Sprintf("启动入口 %s → 最终页面 %s", normalized.Component, finalActivity)
+	if !result.SamePackage {
+		result.Message += "（最终页面不属于目标包，请检查跳转或弹窗）"
+	}
+	return result
+}
+
+func readForegroundActivity(serial, packageName string) (string, string, []string) {
+	queries := [][]string{
+		{"-s", serial, "shell", "dumpsys", "activity", "activities"},
+		{"-s", serial, "shell", "dumpsys", "window", "windows"},
+		{"-s", serial, "shell", "dumpsys", "window"},
+	}
+	errors := make([]string, 0)
+	for _, args := range queries {
+		output, err := runManifestADB(20*time.Second, args...)
+		if component, evidence := parseForegroundActivity(output, packageName); component != "" {
+			return component, evidence, errors
+		}
+		if err != nil {
+			errors = append(errors, adbFailureText(output, err))
+		}
+	}
+	return "", "", errors
+}
+
+func parseForegroundActivity(output, packageName string) (string, string) {
+	markers := []string{
+		"mResumedActivity",
+		"topResumedActivity",
+		"ResumedActivity",
+		"mCurrentFocus",
+		"mFocusedApp",
+	}
+	componentPattern := regexp.MustCompile(`[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+`)
+	lines := strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n")
+	// Prefer the target package across every focus marker before falling back to
+	// another package. Multi-display devices can report several resumed windows.
+	for _, marker := range markers {
+		for _, line := range lines {
+			if !strings.Contains(line, marker) {
+				continue
+			}
+			matches := componentPattern.FindAllString(line, -1)
+			for _, component := range matches {
+				if strings.HasPrefix(component, packageName+"/") {
+					return component, strings.TrimSpace(line)
+				}
+			}
+		}
+	}
+	for _, marker := range markers {
+		for _, line := range lines {
+			if !strings.Contains(line, marker) {
+				continue
+			}
+			matches := componentPattern.FindAllString(line, -1)
+			if len(matches) > 0 {
+				return matches[len(matches)-1], strings.TrimSpace(line)
+			}
+		}
+	}
+	return "", ""
+}
+
+func parseComponentQueryOutput(output, packageName string) []string {
+	packageName = strings.TrimSpace(packageName)
+	if strings.TrimSpace(output) == "" || packageName == "" {
+		return nil
+	}
+	componentRe := regexp.MustCompile(regexp.QuoteMeta(packageName) + `/[A-Za-z0-9_.$]+`)
+	seen := make(map[string]struct{})
+	components := make([]string, 0)
+	for _, component := range componentRe.FindAllString(output, -1) {
+		if _, exists := seen[component]; exists {
+			continue
+		}
+		seen[component] = struct{}{}
+		components = append(components, component)
+	}
+	return components
 }
 
 func parsePackageComponents(output, packageName string) []string {
@@ -2841,6 +3855,11 @@ func prependComponent(components []string, component string) []string {
 
 // PerfPrepColdStart 冷启动准备：force-stop + pm clear
 func (a *App) PerfPrepColdStart(serial, packageName string) AdbResult {
+	release, err := a.acquireDeviceTasks([]string{serial}, "准备冷启动")
+	if err != nil {
+		return AdbResult{Message: err.Error()}
+	}
+	defer release()
 	// force-stop
 	cmd1 := adb.Command("-s", serial, "shell", "am", "force-stop", packageName)
 	hideConsoleWindow(cmd1)
@@ -2860,6 +3879,11 @@ func (a *App) PerfPrepColdStart(serial, packageName string) AdbResult {
 
 // PerfForceStopAll 停止所有第三方应用（包括前台正在运行的）
 func (a *App) PerfForceStopAll(serial string) AdbResult {
+	release, err := a.acquireDeviceTasks([]string{serial}, "停止第三方应用")
+	if err != nil {
+		return AdbResult{Message: err.Error()}
+	}
+	defer release()
 	// 获取所有第三方包并逐个 force-stop
 	listCmd := adb.Command("-s", serial, "shell", "pm", "list", "packages", "-3")
 	hideConsoleWindow(listCmd)
@@ -2890,6 +3914,11 @@ func (a *App) PerfForceStopAll(serial string) AdbResult {
 
 // PerfGoHome 模拟按两次返回键回到首页
 func (a *App) PerfGoHome(serial string) AdbResult {
+	release, err := a.acquireDeviceTasks([]string{serial}, "执行返回操作")
+	if err != nil {
+		return AdbResult{Message: err.Error()}
+	}
+	defer release()
 	// 按两次返回键
 	for i := 0; i < 2; i++ {
 		cmd := adb.Command("-s", serial, "shell", "input", "keyevent", "KEYCODE_BACK")
@@ -2924,6 +3953,11 @@ func (a *App) PerfRunControlCommands(serial, packageName string, opts PerfContro
 	if !opts.ForceStop && !opts.ClearData && !opts.Back {
 		return AdbResult{Success: false, Message: "请至少选择一个命令"}
 	}
+	release, err := a.acquireDeviceTasks([]string{serial}, "执行应用控制")
+	if err != nil {
+		return AdbResult{Message: err.Error()}
+	}
+	defer release()
 
 	var messages []string
 	if opts.ForceStop {
@@ -2961,21 +3995,79 @@ func (a *App) PerfRunControlCommands(serial, packageName string, opts PerfContro
 
 // PerfLaunchResult 性能启动结果
 type PerfLaunchResult struct {
-	Success     bool   `json:"success"`
-	Message     string `json:"message"`
-	Output      string `json:"output"`
-	Timestamp   string `json:"timestamp"` // 启动命令发出时的精确时间
-	ThisTimeMS  int    `json:"thisTimeMs"`
-	TotalTimeMS int    `json:"totalTimeMs"`
-	WaitTimeMS  int    `json:"waitTimeMs"`
-	ResultDir   string `json:"resultDir"`
+	Success       bool   `json:"success"`
+	Message       string `json:"message"`
+	Output        string `json:"output"`
+	Timestamp     string `json:"timestamp"` // 启动命令发出时的精确时间
+	ThisTimeMS    int    `json:"thisTimeMs"`
+	TotalTimeMS   int    `json:"totalTimeMs"`
+	WaitTimeMS    int    `json:"waitTimeMs"`
+	ResultDir     string `json:"resultDir"`
+	LaunchCommand string `json:"launchCommand"`
 }
 
 type PackageComponentsResult struct {
-	Success    bool     `json:"success"`
-	Message    string   `json:"message"`
-	Components []string `json:"components"`
-	Launcher   string   `json:"launcher"`
+	Success               bool                        `json:"success"`
+	Message               string                      `json:"message"`
+	Components            []string                    `json:"components"`
+	Candidates            []PackageComponentCandidate `json:"candidates"`
+	Launcher              string                      `json:"launcher"`
+	Recommended           string                      `json:"recommended"`
+	DeepScanned           bool                        `json:"deepScanned"`
+	CacheHit              bool                        `json:"cacheHit"`
+	VersionCode           string                      `json:"versionCode"`
+	ManifestActivityCount int                         `json:"manifestActivityCount"`
+	APKCount              int                         `json:"apkCount"`
+	Warnings              []string                    `json:"warnings"`
+}
+
+type PackageComponentCandidate struct {
+	Component        string                `json:"component"`
+	Reason           string                `json:"reason"`
+	Score            int                   `json:"score"`
+	Group            string                `json:"group"`
+	Manifest         bool                  `json:"manifest"`
+	Exported         bool                  `json:"exported"`
+	ExportedKnown    bool                  `json:"exportedKnown"`
+	ExportedDeclared bool                  `json:"exportedDeclared"`
+	Enabled          bool                  `json:"enabled"`
+	EnabledKnown     bool                  `json:"enabledKnown"`
+	EnabledDeclared  bool                  `json:"enabledDeclared"`
+	Launchable       bool                  `json:"launchable"`
+	ActivityAlias    bool                  `json:"activityAlias"`
+	TargetActivity   string                `json:"targetActivity"`
+	SourceAPK        string                `json:"sourceApk"`
+	IntentFilters    []PackageIntentFilter `json:"intentFilters"`
+}
+
+type PackageIntentFilter struct {
+	Actions    []string `json:"actions"`
+	Categories []string `json:"categories"`
+	Data       []string `json:"data"`
+}
+
+// PerfLaunchTarget describes an explicit Activity launch and optional Intent data.
+type PerfLaunchTarget struct {
+	Component  string   `json:"component"`
+	Action     string   `json:"action"`
+	Categories []string `json:"categories"`
+	DataURI    string   `json:"dataUri"`
+}
+
+type PackageLaunchVerificationOptions struct {
+	ForceStop        bool `json:"forceStop"`
+	WaitMilliseconds int  `json:"waitMilliseconds"`
+}
+
+type PackageLaunchVerificationResult struct {
+	Success         bool   `json:"success"`
+	Message         string `json:"message"`
+	LaunchComponent string `json:"launchComponent"`
+	FinalActivity   string `json:"finalActivity"`
+	LaunchCommand   string `json:"launchCommand"`
+	Output          string `json:"output"`
+	Evidence        string `json:"evidence"`
+	SamePackage     bool   `json:"samePackage"`
 }
 
 // PerfettoOptions 启动时间测试的 Perfetto 采集配置。
@@ -2983,6 +4075,7 @@ type PerfettoOptions struct {
 	Enabled            bool `json:"enabled"`
 	MaxDurationSeconds int  `json:"maxDurationSeconds"`
 	BufferSizeMB       int  `json:"bufferSizeMB"`
+	ForceStop          bool `json:"forceStop"`
 }
 
 type PerfBatchOptions struct {
@@ -3014,6 +4107,18 @@ type PerfAggregateReportResult struct {
 	ResultDir  string `json:"resultDir"`
 }
 
+// OverallPerformanceRequest configures a foreground-only, multi-device performance run.
+type OverallPerformanceRequest struct {
+	Package            string                 `json:"package"`
+	Devices            []string               `json:"devices"`
+	Scenarios          []performance.Scenario `json:"scenarios"`
+	Rounds             int                    `json:"rounds"`
+	SettleMilliseconds int                    `json:"settleMilliseconds"`
+	Thresholds         performance.Thresholds `json:"thresholds"`
+	IncludeStartup     bool                   `json:"includeStartup"`
+	StartupResultDirs  []string               `json:"startupResultDirs"`
+}
+
 type perfReportMetrics struct {
 	includeTotal  bool
 	includeManual bool
@@ -3021,20 +4126,22 @@ type perfReportMetrics struct {
 
 // PerfettoStartResult 启动计时结果。
 type PerfettoStartResult struct {
-	Success      bool                      `json:"success"`
-	Message      string                    `json:"message"`
-	Output       string                    `json:"output"`
-	Timestamp    string                    `json:"timestamp"`
-	ThisTimeMS   int                       `json:"thisTimeMs"`
-	TotalTimeMS  int                       `json:"totalTimeMs"`
-	WaitTimeMS   int                       `json:"waitTimeMs"`
-	ResultDir    string                    `json:"resultDir"`
-	TraceEnabled bool                      `json:"traceEnabled"`
-	Capability   perfetto.CapabilityResult `json:"capability"`
+	Success       bool                      `json:"success"`
+	Message       string                    `json:"message"`
+	Output        string                    `json:"output"`
+	Timestamp     string                    `json:"timestamp"`
+	ThisTimeMS    int                       `json:"thisTimeMs"`
+	TotalTimeMS   int                       `json:"totalTimeMs"`
+	WaitTimeMS    int                       `json:"waitTimeMs"`
+	ResultDir     string                    `json:"resultDir"`
+	TraceEnabled  bool                      `json:"traceEnabled"`
+	LaunchCommand string                    `json:"launchCommand"`
+	Capability    perfetto.CapabilityResult `json:"capability"`
 }
 
 // PerfettoStopResult 停止计时结果。
 type PerfettoStopResult struct {
+	Run             *perfetto.LaunchResult    `json:"run,omitempty"`
 	Success         bool                      `json:"success"`
 	Message         string                    `json:"message"`
 	TraceFile       string                    `json:"traceFile"`
@@ -3051,46 +4158,53 @@ type PerfettoStopResult struct {
 
 // PerfLaunchActivity 启动 Activity 并返回 am start -W 的输出
 func (a *App) PerfLaunchActivity(serial, component string) PerfLaunchResult {
-	component = strings.TrimSpace(component)
-	if err := validatePerfComponent(component); err != nil {
+	serial = strings.TrimSpace(serial)
+	if serial == "" {
+		return PerfLaunchResult{Success: false, Message: "请先选择设备"}
+	}
+	target, err := normalizePerfLaunchTarget(PerfLaunchTarget{Component: component})
+	if err != nil {
 		return PerfLaunchResult{Success: false, Message: err.Error()}
 	}
+	launchCommand := perfLaunchCommandText(serial, target)
 
 	// 记录启动命令发出的精确时间
 	startTime := time.Now()
 	timestamp := startTime.Format("2006-01-02 15:04:05.000")
 
-	cmd := adb.Command("-s", serial, "shell", "am", "start", "-W", "-n", component)
+	cmd := newPerfLaunchCommand(serial, target)
 	hideConsoleWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return PerfLaunchResult{
-			Success:   false,
-			Message:   fmt.Sprintf("启动失败: %v", err),
-			Output:    string(output),
-			Timestamp: timestamp,
+			Success:       false,
+			Message:       fmt.Sprintf("启动失败: %v", err),
+			Output:        string(output),
+			Timestamp:     timestamp,
+			LaunchCommand: launchCommand,
 		}
 	}
 	thisTime, totalTime, waitTime := perfetto.ParseAmStartOutput(string(output))
 
 	return PerfLaunchResult{
-		Success:     true,
-		Message:     "启动成功",
-		Output:      string(output),
-		Timestamp:   timestamp,
-		ThisTimeMS:  thisTime,
-		TotalTimeMS: totalTime,
-		WaitTimeMS:  waitTime,
+		Success:       true,
+		Message:       "启动成功",
+		Output:        string(output),
+		Timestamp:     timestamp,
+		ThisTimeMS:    thisTime,
+		TotalTimeMS:   totalTime,
+		WaitTimeMS:    waitTime,
+		LaunchCommand: launchCommand,
 	}
 }
 
-func (a *App) PerfRunLaunchBatch(serial, component string, opts PerfBatchOptions) PerfBatchResult {
+func (a *App) PerfRunLaunchBatch(serial string, target PerfLaunchTarget, opts PerfBatchOptions) PerfBatchResult {
 	serial = strings.TrimSpace(serial)
-	component = strings.TrimSpace(component)
 	if serial == "" {
 		return PerfBatchResult{Success: false, Message: "请先选择设备"}
 	}
-	if err := validatePerfComponent(component); err != nil {
+	target, err := normalizePerfLaunchTarget(target)
+	if err != nil {
 		return PerfBatchResult{Success: false, Message: err.Error()}
 	}
 
@@ -3110,19 +4224,18 @@ func (a *App) PerfRunLaunchBatch(serial, component string, opts PerfBatchOptions
 		opts.PostLaunchCaptureSeconds = 60
 	}
 
-	a.cmdMu.Lock()
-	if a.perfResult != nil || a.perfSession != nil || a.perfLogcat != nil {
-		a.cmdMu.Unlock()
-		return PerfBatchResult{Success: false, Message: "当前已有启动时间测试在运行"}
+	release, err := a.beginStartupTask(serial, "批量启动测试")
+	if err != nil {
+		return PerfBatchResult{Message: err.Error()}
 	}
-	a.cmdMu.Unlock()
+	defer release()
 
 	batchDir := filepath.Join(a.resolvedOutputDir(), "perf", "batch-"+time.Now().Format("20060102-150405")+"-"+fmt.Sprint(time.Now().UnixNano()))
 	if err := os.MkdirAll(batchDir, 0755); err != nil {
 		return PerfBatchResult{Success: false, Message: fmt.Sprintf("创建批量结果目录失败: %v", err)}
 	}
 
-	packageName := perfetto.PackageNameFromComponent(component)
+	packageName := perfetto.PackageNameFromComponent(target.Component)
 	result := PerfBatchResult{
 		Success:   true,
 		Message:   "批量启动测试完成",
@@ -3133,7 +4246,7 @@ func (a *App) PerfRunLaunchBatch(serial, component string, opts PerfBatchOptions
 
 	for i := 1; i <= opts.Count; i++ {
 		runDir := filepath.Join(batchDir, fmt.Sprintf("run-%02d", i))
-		run := a.runLaunchBatchOnce(serial, component, packageName, runDir, opts, i)
+		run := a.runLaunchBatchOnce(serial, target, packageName, runDir, opts, i)
 		result.Runs = append(result.Runs, run)
 		if run.Success {
 			result.Successes++
@@ -3152,17 +4265,23 @@ func (a *App) PerfRunLaunchBatch(serial, component string, opts PerfBatchOptions
 	return result
 }
 
-func (a *App) runLaunchBatchOnce(serial, component, packageName, resultDir string, opts PerfBatchOptions, index int) perfetto.LaunchResult {
+func (a *App) runLaunchBatchOnce(serial string, target PerfLaunchTarget, packageName, resultDir string, opts PerfBatchOptions, index int) perfetto.LaunchResult {
 	_ = os.MkdirAll(resultDir, 0755)
 	startTime := time.Now()
 	result := perfetto.LaunchResult{
-		Success:     false,
-		Serial:      serial,
-		Component:   component,
-		PackageName: packageName,
-		ResultDir:   resultDir,
-		Timestamp:   startTime.Format("2006-01-02 15:04:05.000"),
-		Message:     fmt.Sprintf("第 %d 轮启动测试", index),
+		Success:          false,
+		Serial:           serial,
+		Component:        target.Component,
+		PackageName:      packageName,
+		LaunchAction:     target.Action,
+		LaunchCategories: append([]string(nil), target.Categories...),
+		LaunchDataURI:    target.DataURI,
+		LaunchCommand:    perfLaunchCommandText(serial, target),
+		ForceStopBefore:  opts.ForceStop || opts.ClearData,
+		ClearDataBefore:  opts.ClearData,
+		ResultDir:        resultDir,
+		Timestamp:        startTime.Format("2006-01-02 15:04:05.000"),
+		Message:          fmt.Sprintf("第 %d 轮启动测试", index),
 	}
 
 	var prep strings.Builder
@@ -3212,7 +4331,7 @@ func (a *App) runLaunchBatchOnce(serial, component, packageName, resultDir strin
 		}
 	}
 
-	cmd := adb.Command("-s", serial, "shell", "am", "start", "-W", "-n", component)
+	cmd := newPerfLaunchCommand(serial, target)
 	hideConsoleWindow(cmd)
 	output, launchErr := cmd.CombinedOutput()
 	rawOutput := string(output)
@@ -3249,43 +4368,72 @@ func (a *App) runLaunchBatchOnce(serial, component, packageName, resultDir strin
 	}
 	result.StoppedAt = time.Now().Format("2006-01-02 15:04:05.000")
 	result.StopReason = "batch"
-	result.ManualDurationMS = time.Since(startTime).Milliseconds()
+	result.CaptureDurationMS = time.Since(startTime).Milliseconds()
 	_ = perfetto.SaveMetadata(resultDir, result)
 	return result
 }
 
 // PerfStartLaunchTrace 开始启动计时：可选启动 Perfetto，并执行 am start -W。
-func (a *App) PerfStartLaunchTrace(serial, component string, opts PerfettoOptions) PerfettoStartResult {
+func (a *App) PerfStartLaunchTrace(serial string, target PerfLaunchTarget, opts PerfettoOptions) PerfettoStartResult {
 	serial = strings.TrimSpace(serial)
-	component = strings.TrimSpace(component)
 	if serial == "" {
 		return PerfettoStartResult{Success: false, Message: "请先选择设备"}
 	}
-	if err := validatePerfComponent(component); err != nil {
+	target, err := normalizePerfLaunchTarget(target)
+	if err != nil {
 		return PerfettoStartResult{Success: false, Message: err.Error()}
 	}
 
-	a.cmdMu.Lock()
-	if a.perfResult != nil || a.perfSession != nil {
-		a.cmdMu.Unlock()
-		return PerfettoStartResult{Success: false, Message: "当前已有启动时间测试在运行"}
+	release, err := a.beginStartupTask(serial, "启动计时")
+	if err != nil {
+		return PerfettoStartResult{Message: err.Error()}
 	}
-	a.cmdMu.Unlock()
+	keepSession := false
+	defer func() {
+		if !keepSession {
+			release()
+		}
+	}()
 
 	resultDir, err := perfetto.CreateResultDir(a.resolvedOutputDir())
 	if err != nil {
 		return PerfettoStartResult{Success: false, Message: fmt.Sprintf("创建结果目录失败: %v", err)}
 	}
 
-	packageName := perfetto.PackageNameFromComponent(component)
+	packageName := perfetto.PackageNameFromComponent(target.Component)
 	startTime := time.Now()
 	result := &perfetto.LaunchResult{
-		Success:     false,
-		Serial:      serial,
-		Component:   component,
-		PackageName: packageName,
-		ResultDir:   resultDir,
-		Timestamp:   startTime.Format("2006-01-02 15:04:05.000"),
+		Success:          false,
+		Serial:           serial,
+		Component:        target.Component,
+		PackageName:      packageName,
+		LaunchAction:     target.Action,
+		LaunchCategories: append([]string(nil), target.Categories...),
+		LaunchDataURI:    target.DataURI,
+		LaunchCommand:    perfLaunchCommandText(serial, target),
+		ForceStopBefore:  opts.ForceStop,
+		ResultDir:        resultDir,
+		Timestamp:        startTime.Format("2006-01-02 15:04:05.000"),
+	}
+	if opts.ForceStop {
+		cmd := adb.Command("-s", serial, "shell", "am", "force-stop", packageName)
+		hideConsoleWindow(cmd)
+		output, stopErr := cmd.CombinedOutput()
+		prep := fmt.Sprintf("$ adb -s %s shell am force-stop %s\n%s", serial, packageName, string(output))
+		_ = os.WriteFile(filepath.Join(resultDir, "prep.txt"), []byte(prep), 0644)
+		if stopErr != nil {
+			result.RawOutput = string(output)
+			result.Message = fmt.Sprintf("启动前 force-stop 失败: %v", stopErr)
+			_ = perfetto.SaveMetadata(resultDir, *result)
+			return PerfettoStartResult{
+				Success:       false,
+				Message:       result.Message,
+				Output:        string(output),
+				Timestamp:     result.Timestamp,
+				ResultDir:     resultDir,
+				LaunchCommand: result.LaunchCommand,
+			}
+		}
 	}
 
 	perfOpts := perfetto.NormalizeOptions(perfetto.Options{
@@ -3298,7 +4446,7 @@ func (a *App) PerfStartLaunchTrace(serial, component string, opts PerfettoOption
 	if err != nil {
 		result.Message = err.Error()
 		_ = perfetto.SaveMetadata(resultDir, *result)
-		return PerfettoStartResult{Success: false, Message: err.Error(), ResultDir: resultDir}
+		return PerfettoStartResult{Success: false, Message: err.Error(), ResultDir: resultDir, LaunchCommand: result.LaunchCommand}
 	}
 	result.LogcatFile = logcatSession.LogFile
 
@@ -3311,37 +4459,17 @@ func (a *App) PerfStartLaunchTrace(serial, component string, opts PerfettoOption
 			result.Capability = perfetto.DetectCapability(serial)
 			result.Message = err.Error()
 			_ = perfetto.SaveMetadata(resultDir, *result)
-			return PerfettoStartResult{Success: false, Message: err.Error(), ResultDir: resultDir, TraceEnabled: true, Capability: result.Capability}
+			return PerfettoStartResult{Success: false, Message: err.Error(), ResultDir: resultDir, TraceEnabled: true, LaunchCommand: result.LaunchCommand, Capability: result.Capability}
 		}
 		result.Capability = session.Capability
 	}
 
-	a.cmdMu.Lock()
-	a.perfSession = session
-	a.perfLogcat = logcatSession
-	a.perfResult = result
-	if session != nil || logcatSession != nil {
-		a.perfTimer = time.AfterFunc(time.Duration(perfOpts.MaxDurationSeconds)*time.Second, func() {
-			stop := a.stopLaunchTrace("timeout")
-			runtime.EventsEmit(a.ctx, "perfetto-timeout", map[string]interface{}{
-				"success":         stop.Success,
-				"message":         stop.Message,
-				"traceFile":       stop.TraceFile,
-				"logcatFile":      stop.LogcatFile,
-				"reportFile":      stop.ReportFile,
-				"timelineFile":    stop.TimelineFile,
-				"traceSizeBytes":  stop.TraceSizeBytes,
-				"traceAnalyzable": stop.TraceAnalyzable,
-				"traceWarning":    stop.TraceWarning,
-				"resultDir":       stop.ResultDir,
-				"capability":      stop.Capability,
-			})
-		})
-	}
-	a.cmdMu.Unlock()
-
-	cmd := adb.Command("-s", serial, "shell", "am", "start", "-W", "-n", component)
+	launchCtx, cancelLaunch := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancelLaunch()
+	cmd := adb.CommandContext(launchCtx, append([]string{"-s", serial}, adb.ShellArgs(perfLaunchArgs(target)[1:]...)...)...)
 	hideConsoleWindow(cmd)
+	startTime = time.Now()
+	result.Timestamp = startTime.Format("2006-01-02 15:04:05.000")
 	output, launchErr := cmd.CombinedOutput()
 	rawOutput := string(output)
 	thisTime, totalTime, waitTime := perfetto.ParseAmStartOutput(rawOutput)
@@ -3384,34 +4512,52 @@ func (a *App) PerfStartLaunchTrace(serial, component string, opts PerfettoOption
 		}
 		a.cmdMu.Unlock()
 		return PerfettoStartResult{
-			Success:      false,
-			Message:      result.Message,
-			Output:       rawOutput,
-			Timestamp:    result.Timestamp,
-			ThisTimeMS:   thisTime,
-			TotalTimeMS:  totalTime,
-			WaitTimeMS:   waitTime,
-			ResultDir:    resultDir,
-			TraceEnabled: session != nil,
-			Capability:   result.Capability,
+			Success:       false,
+			Message:       result.Message,
+			Output:        rawOutput,
+			Timestamp:     result.Timestamp,
+			ThisTimeMS:    thisTime,
+			TotalTimeMS:   totalTime,
+			WaitTimeMS:    waitTime,
+			ResultDir:     resultDir,
+			TraceEnabled:  session != nil,
+			LaunchCommand: result.LaunchCommand,
+			Capability:    result.Capability,
 		}
 	}
 
 	result.Success = true
 	result.Message = "启动成功"
 	_ = perfetto.SaveMetadata(resultDir, *result)
-	return PerfettoStartResult{
-		Success:      true,
-		Message:      "启动成功",
-		Output:       rawOutput,
-		Timestamp:    result.Timestamp,
-		ThisTimeMS:   thisTime,
-		TotalTimeMS:  totalTime,
-		WaitTimeMS:   waitTime,
-		ResultDir:    resultDir,
-		TraceEnabled: session != nil,
-		Capability:   result.Capability,
+	startResult := PerfettoStartResult{
+		Success:       true,
+		Message:       "启动成功",
+		Output:        rawOutput,
+		Timestamp:     result.Timestamp,
+		ThisTimeMS:    thisTime,
+		TotalTimeMS:   totalTime,
+		WaitTimeMS:    waitTime,
+		ResultDir:     resultDir,
+		TraceEnabled:  session != nil,
+		LaunchCommand: result.LaunchCommand,
+		Capability:    result.Capability,
 	}
+	a.cmdMu.Lock()
+	a.perfSession = session
+	a.perfLogcat = logcatSession
+	a.perfResult = result
+	a.perfStartedAt = startTime
+	a.perfRelease = release
+	keepSession = true
+	remaining := time.Duration(perfOpts.MaxDurationSeconds)*time.Second - time.Since(startTime)
+	a.perfTimer = time.AfterFunc(max(remaining, time.Millisecond), func() {
+		stop := a.stopLaunchTraceFor(result, "timeout")
+		if stop.Run != nil && a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "perfetto-timeout", stop)
+		}
+	})
+	a.cmdMu.Unlock()
+	return startResult
 }
 
 // PerfStopLaunchTrace 停止当前启动计时的 Perfetto 会话并拉取 trace。
@@ -3420,29 +4566,69 @@ func (a *App) PerfStopLaunchTrace() PerfettoStopResult {
 }
 
 func (a *App) stopLaunchTrace(reason string) PerfettoStopResult {
+	return a.stopLaunchTraceFor(nil, reason)
+}
+
+func (a *App) stopLaunchTraceFor(expected *perfetto.LaunchResult, reason string) (stop PerfettoStopResult) {
+	a.perfStopMu.Lock()
+	defer a.perfStopMu.Unlock()
 	a.cmdMu.Lock()
+	if expected != nil && a.perfResult != expected {
+		a.cmdMu.Unlock()
+		return PerfettoStopResult{Message: "该计时会话已结束", Reason: reason}
+	}
 	session := a.perfSession
 	logcatSession := a.perfLogcat
 	result := a.perfResult
 	timer := a.perfTimer
+	startedAt := a.perfStartedAt
+	release := a.perfRelease
 	a.perfSession = nil
 	a.perfLogcat = nil
 	a.perfResult = nil
 	a.perfTimer = nil
+	a.perfRelease = nil
 	a.cmdMu.Unlock()
 
 	if timer != nil {
 		timer.Stop()
 	}
 	if result == nil {
+		a.cmdMu.Lock()
+		lastStop := a.perfLastStop
+		a.cmdMu.Unlock()
+		if reason == "manual" && lastStop.Reason == "timeout" {
+			return lastStop
+		}
 		return PerfettoStopResult{Success: false, Message: "当前没有运行中的启动时间测试", Reason: reason}
 	}
+	if release != nil {
+		defer release()
+	}
+	defer func() {
+		if err := perfetto.SaveMetadata(result.ResultDir, *result); err != nil {
+			stop.Success = false
+			stop.Message += fmt.Sprintf("；保存记录失败: %v", err)
+		}
+		record := *result
+		stop.Run = &record
+		a.cmdMu.Lock()
+		a.perfLastStop = stop
+		a.cmdMu.Unlock()
+	}()
 
 	now := time.Now()
 	result.StoppedAt = now.Format("2006-01-02 15:04:05.000")
 	result.StopReason = reason
-	if startedAt, err := time.ParseInLocation("2006-01-02 15:04:05.000", result.Timestamp, time.Local); err == nil {
-		result.ManualDurationMS = now.Sub(startedAt).Milliseconds()
+	if startedAt.IsZero() {
+		startedAt, _ = time.ParseInLocation("2006-01-02 15:04:05.000", result.Timestamp, time.Local)
+	}
+	result.ManualDurationMS = 0
+	if !startedAt.IsZero() {
+		result.CaptureDurationMS = now.Sub(startedAt).Milliseconds()
+		if reason == "manual" && result.Success {
+			result.ManualDurationMS = result.CaptureDurationMS
+		}
 	}
 	if logcatSession != nil {
 		_ = logcatSession.Stop()
@@ -3450,7 +4636,6 @@ func (a *App) stopLaunchTrace(reason string) PerfettoStopResult {
 		a.saveLogcatAnalysis(result)
 	}
 	if session != nil {
-		result.ManualDurationMS = now.Sub(session.StartedAt).Milliseconds()
 		traceFile, err := session.StopAndPull()
 		result.TraceFile = traceFile
 		result.TraceSizeBytes = session.TraceSizeBytes
@@ -3460,7 +4645,6 @@ func (a *App) stopLaunchTrace(reason string) PerfettoStopResult {
 		if err != nil {
 			result.Success = false
 			result.Message = fmt.Sprintf("停止 Perfetto 失败: %v", err)
-			_ = perfetto.SaveMetadata(result.ResultDir, *result)
 			return PerfettoStopResult{
 				Success:         false,
 				Message:         result.Message,
@@ -3485,7 +4669,6 @@ func (a *App) stopLaunchTrace(reason string) PerfettoStopResult {
 		result.Message = "启动时间测试已结束"
 	}
 
-	_ = perfetto.SaveMetadata(result.ResultDir, *result)
 	return PerfettoStopResult{
 		Success:         true,
 		Message:         result.Message,
@@ -3520,9 +4703,12 @@ func (a *App) saveLogcatAnalysis(result *perfetto.LaunchResult) {
 }
 
 func fillBatchStats(result *PerfBatchResult) {
+	if len(groupPerfRecords(result.Runs)) > 1 {
+		return
+	}
 	var values []int
 	for _, run := range result.Runs {
-		if run.TotalTimeMS > 0 {
+		if run.Success && run.TotalTimeMS > 0 {
 			values = append(values, run.TotalTimeMS)
 		}
 	}
@@ -3669,9 +4855,10 @@ func loadPerfRecordMetadata(perfRoot string, resultDirs []string) ([]perfetto.La
 			return nil, fmt.Errorf("解析第 %d 条测试记录 metadata.json 失败: %v", index+1, err)
 		}
 		run.ResultDir = dirAbs
-		if run.ManualDurationMS <= 0 {
+		if run.ManualDurationMS <= 0 && run.StopReason == "manual" {
 			run.ManualDurationMS = durationBetweenPerfTimestamps(run.Timestamp, run.StoppedAt)
 		}
+		run.ManualDurationMS = run.ValidManualDurationMS()
 		runs = append(runs, run)
 	}
 	return runs, nil
@@ -3695,6 +4882,89 @@ func durationBetweenPerfTimestamps(startValue, stopValue string) int64 {
 	return stop.Sub(start).Milliseconds()
 }
 
+// RunOverallPerformanceTest runs a foreground-only performance test and emits progress events.
+// The runner intentionally never starts, stops, or clears the target application.
+func (a *App) RunOverallPerformanceTest(request OverallPerformanceRequest) performance.Result {
+	release, err := a.acquireDeviceTasks(request.Devices, "综合性能测试")
+	if err != nil {
+		return performance.Result{Message: err.Error()}
+	}
+	defer release()
+	a.overallPerfMu.Lock()
+	if a.overallPerfCancel != nil {
+		a.overallPerfMu.Unlock()
+		return performance.Result{Message: "综合性能测试正在运行，请先停止当前测试"}
+	}
+	parent := a.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	runCtx, cancel := context.WithCancel(parent)
+	a.overallPerfCancel = cancel
+	a.overallPerfMu.Unlock()
+	defer func() {
+		cancel()
+		a.overallPerfMu.Lock()
+		a.overallPerfCancel = nil
+		a.overallPerfMu.Unlock()
+	}()
+
+	a.cmdMu.Lock()
+	startupTimerRunning := a.perfSession != nil || a.perfLogcat != nil
+	a.cmdMu.Unlock()
+	if startupTimerRunning {
+		return performance.Result{Message: "启动计时正在运行，请先停止启动计时再开始综合性能测试"}
+	}
+
+	startupSamples := make([]performance.StartupSample, 0, len(request.StartupResultDirs))
+	if request.IncludeStartup && len(request.StartupResultDirs) > 0 {
+		perfRoot := filepath.Join(a.resolvedOutputDir(), "perf")
+		runs, err := loadPerfRecordMetadata(perfRoot, request.StartupResultDirs)
+		if err != nil {
+			return performance.Result{Message: fmt.Sprintf("读取关联启动测试记录失败: %v", err)}
+		}
+		for _, run := range runs {
+			if !run.Success || run.PackageName != request.Package || !containsString(request.Devices, run.Serial) {
+				continue
+			}
+			startupSamples = append(startupSamples, performance.StartupSample{
+				TotalTimeMS:      int64(run.TotalTimeMS),
+				ManualDurationMS: run.ValidManualDurationMS(),
+				Group:            perfRecordGroupKey(run),
+				Label:            perfRecordGroupLabel(run),
+			})
+		}
+	}
+
+	options := performance.Options{
+		Package:            request.Package,
+		Devices:            request.Devices,
+		Scenarios:          request.Scenarios,
+		Rounds:             request.Rounds,
+		SettleMilliseconds: request.SettleMilliseconds,
+		Thresholds:         request.Thresholds,
+		OutputRoot:         filepath.Join(a.resolvedOutputDir(), "performance"),
+		StartupSamples:     startupSamples,
+	}
+	return performance.Run(runCtx, options, func(progress performance.Progress) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "overall-performance-progress", progress)
+		}
+	})
+}
+
+// StopOverallPerformanceTest requests cancellation and lets the runner save partial evidence.
+func (a *App) StopOverallPerformanceTest() AdbResult {
+	a.overallPerfMu.Lock()
+	cancel := a.overallPerfCancel
+	a.overallPerfMu.Unlock()
+	if cancel == nil {
+		return AdbResult{Success: false, Message: "当前没有正在运行的综合性能测试"}
+	}
+	cancel()
+	return AdbResult{Success: true, Message: "正在停止综合性能测试并保存已采集数据"}
+}
+
 func savePerfAggregateReport(batch PerfBatchResult, resultDir string, metrics perfReportMetrics) PerfAggregateReportResult {
 	batch.ResultDir = resultDir
 
@@ -3712,7 +4982,7 @@ func savePerfAggregateReport(batch PerfBatchResult, resultDir string, metrics pe
 	}
 }
 
-func buildPerfAggregateReport(batch PerfBatchResult, reportPath string, metrics perfReportMetrics) string {
+func buildPerfGroupReport(batch PerfBatchResult, reportPath string, metrics perfReportMetrics) string {
 	totalRuns := len(batch.Runs)
 	successRuns := batch.Successes
 	if successRuns == 0 {
@@ -3808,14 +5078,17 @@ func buildPerfAggregateReport(batch PerfBatchResult, reportPath string, metrics 
 	fmt.Fprintf(&b, "设备: %s\n", emptyAsDash(firstRun.Serial))
 	fmt.Fprintf(&b, "应用包名: %s\n", emptyAsDash(firstRun.PackageName))
 	fmt.Fprintf(&b, "启动 Component: %s\n", emptyAsDash(firstRun.Component))
+	fmt.Fprintf(&b, "启动命令: %s\n", perfRunLaunchCommand(firstRun))
+	fmt.Fprintf(&b, "启动前 force-stop: %s\n", yesNo(firstRun.ForceStopBefore))
 	fmt.Fprintf(&b, "测试轮数: %d\n", totalRuns)
 	fmt.Fprintf(&b, "测试方式: %s\n", perfReportTestMethod(batch.Runs))
 	fmt.Fprintf(&b, "数据来源: Android am start -W 输出、logcat 时间线、可选 Perfetto trace。\n")
 	fmt.Fprintf(&b, "注意: TotalTime/WaitTime 主要衡量 Activity 启动到首帧相关耗时，不等于用户看到页面完全加载好所需的全部时间。\n")
 	fmt.Fprintf(&b, "手动(ms)表示用户看到页面完全加载好并可以进行下一步操作所需的全部时间。\n")
-	if metrics.includeTotal && metrics.includeManual {
+	if metrics.includeTotal && metrics.includeManual && len(manualValues) > 0 {
 		fmt.Fprintf(&b, "同时选择两类指标时，报告以手动(ms)作为本次启动耗时的主要结论，TotalTime/WaitTime 作为首帧阶段的辅助指标。\n")
 	}
+	fmt.Fprintf(&b, "手动(ms)仅统计成功启动后由用户主动停止的记录；批量采集、自动超时和失败记录不计入该指标。\n")
 	fmt.Fprintf(&b, "\n")
 
 	fmt.Fprintf(&b, "三、核心数据汇总\n")
@@ -3862,7 +5135,7 @@ func buildPerfAggregateReport(batch PerfBatchResult, reportPath string, metrics 
 			msOrDash(run.TotalTimeMS),
 			msOrDash(run.WaitTimeMS),
 			msOrDash(run.ThisTimeMS),
-			run.ManualDurationMS,
+			run.ValidManualDurationMS(),
 			compactRunMessage(run),
 		)
 	}
@@ -3924,7 +5197,7 @@ func buildPerfAggregateReport(batch PerfBatchResult, reportPath string, metrics 
 func collectPositiveTotals(runs []perfetto.LaunchResult) []int {
 	values := make([]int, 0, len(runs))
 	for _, run := range runs {
-		if run.TotalTimeMS > 0 {
+		if run.Success && run.TotalTimeMS > 0 {
 			values = append(values, run.TotalTimeMS)
 		}
 	}
@@ -3934,7 +5207,7 @@ func collectPositiveTotals(runs []perfetto.LaunchResult) []int {
 func collectPositiveWaits(runs []perfetto.LaunchResult) []int {
 	values := make([]int, 0, len(runs))
 	for _, run := range runs {
-		if run.WaitTimeMS > 0 {
+		if run.Success && run.WaitTimeMS > 0 {
 			values = append(values, run.WaitTimeMS)
 		}
 	}
@@ -3944,8 +5217,8 @@ func collectPositiveWaits(runs []perfetto.LaunchResult) []int {
 func collectManualDurations(runs []perfetto.LaunchResult) []int64 {
 	values := make([]int64, 0, len(runs))
 	for _, run := range runs {
-		if run.ManualDurationMS > 0 {
-			values = append(values, run.ManualDurationMS)
+		if duration := run.ValidManualDurationMS(); duration > 0 {
+			values = append(values, duration)
 		}
 	}
 	return values
@@ -3994,12 +5267,34 @@ func perfReportTestMethod(runs []perfetto.LaunchResult) string {
 	}
 	switch {
 	case batchRuns == len(runs):
-		return "每一轮先按配置执行 force-stop / pm clear，然后采集 logcat，再执行 am start -W -n <Component> 启动目标 Activity。"
+		return "每一轮先按配置执行 force-stop / pm clear，然后采集 logcat，再按启动命令执行 Component 或 Intent / Deep Link。"
 	case batchRuns == 0:
-		return "通过“执行启动计时”开始测试并启动目标 Activity，再由“执行停止计时”或采集超时结束本轮测试。"
+		return "通过“执行启动计时”开始测试，按配置的 Component 或 Intent / Deep Link 启动目标 Activity，再由“执行停止计时”或采集超时结束本轮测试。"
 	default:
 		return "当前报告包含手动启动计时和批量启动测试记录，各轮均采集 am start -W 输出及相应日志/Trace 产物。"
 	}
+}
+
+func perfRunLaunchCommand(run perfetto.LaunchResult) string {
+	if command := strings.TrimSpace(run.LaunchCommand); command != "" {
+		return command
+	}
+	if strings.TrimSpace(run.Component) == "" {
+		return "-"
+	}
+	return perfLaunchCommandText(run.Serial, PerfLaunchTarget{
+		Component:  run.Component,
+		Action:     run.LaunchAction,
+		Categories: run.LaunchCategories,
+		DataURI:    run.LaunchDataURI,
+	})
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "是"
+	}
+	return "否"
 }
 
 func stddevInts(values []int, mean float64) float64 {
@@ -4234,6 +5529,9 @@ var (
 )
 
 func (a *App) emitTaskEvent(topic, eventType, message string) {
+	if a.ctx == nil {
+		return
+	}
 	runtime.EventsEmit(a.ctx, topic, map[string]interface{}{
 		"type":    eventType,
 		"message": message,
@@ -4308,7 +5606,7 @@ func resolveRelativeToExe(path string) string {
 }
 
 func (a *App) resolvedOutputDir() string {
-	outputDir := a.cfg.OutputDir
+	outputDir := a.GetConfig().OutputDir
 	if outputDir == "" {
 		outputDir = "output"
 	}
@@ -4365,7 +5663,20 @@ func writePlayManifest(outputDir string, entries []playManifestEntry) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(outputDir, "manifest.json"), data, 0644)
+	file, err := os.CreateTemp(outputDir, ".manifest-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	_, writeErr := file.Write(data)
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return os.Rename(file.Name(), filepath.Join(outputDir, "manifest.json"))
 }
 
 func readPlayManifest(wavDir string) (*playManifest, error) {
@@ -4759,14 +6070,18 @@ func (a *App) RunGenerate() {
 
 func (a *App) runGenerateInBackground() {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	if !a.beginGenerateTask(cancel) {
 		a.emitGenerateError("当前已有批量生成任务在运行")
 		a.emitGenerateDone("批量生成未启动")
 		return
 	}
 	defer a.finishGenerateTask()
+	a.configMu.RLock()
+	cfg, engine := cloneConfig(a.cfg), a.ttsEngine
+	a.configMu.RUnlock()
 
-	texts, err := a.GetTextList()
+	texts, err := readTextList(cfg.TextFile)
 	if err != nil {
 		a.emitGenerateError(fmt.Sprintf("读取文本失败: %v", err))
 		a.emitGenerateDone("批量生成失败")
@@ -4778,7 +6093,11 @@ func (a *App) runGenerateInBackground() {
 		return
 	}
 
-	outputDir := a.resolvedOutputDir()
+	outputDir := cfg.OutputDir
+	if outputDir == "" {
+		outputDir = "output"
+	}
+	outputDir = resolveRelativeToExe(outputDir)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		a.emitGenerateError(fmt.Sprintf("创建输出目录失败: %v", err))
 		a.emitGenerateDone("批量生成失败")
@@ -4804,10 +6123,14 @@ func (a *App) runGenerateInBackground() {
 		}
 
 		a.emitGenerateOutput(fmt.Sprintf("[%d/%d] %s", i+1, len(texts), truncate(text, 30)))
-		safeName := sanitizeFileName(truncate(text, a.cfg.FileNameMaxLength))
+		safeName := sanitizeFileName(truncate(text, cfg.FileNameMaxLength))
 		outputFile := filepath.Join(outputDir, fmt.Sprintf("%04d%s.wav", i+1, safeName))
 
-		if err := a.generateFullAudio(text, outputFile); err != nil {
+		if err := generateFullAudioContext(ctx, cfg, engine, text, outputFile); err != nil {
+			if ctx.Err() != nil {
+				a.emitGenerateDone("已停止生成，已保留完成的语音及映射")
+				return
+			}
 			failCount++
 			a.emitGenerateError(fmt.Sprintf("生成失败: %s -> %v", filepath.Base(outputFile), err))
 			continue
@@ -4819,18 +6142,17 @@ func (a *App) runGenerateInBackground() {
 			Text:    text,
 			WavFile: filepath.Base(outputFile),
 		})
+		if err := writePlayManifest(outputDir, manifestEntries); err != nil {
+			a.emitGenerateError(fmt.Sprintf("保存已完成语音映射失败: %v", err))
+			a.emitGenerateDone("生成已停止，请检查输出目录写权限")
+			return
+		}
 		a.emitGenerateOutput(fmt.Sprintf("生成完成 -> %s", filepath.Base(outputFile)))
 	}
 
 	if ctx.Err() != nil {
 		a.emitGenerateDone("已停止生成")
 		return
-	}
-
-	if len(manifestEntries) > 0 {
-		if err := writePlayManifest(outputDir, manifestEntries); err != nil {
-			a.emitGenerateError(fmt.Sprintf("写入 manifest 失败: %v", err))
-		}
 	}
 
 	a.emitGenerateDone(fmt.Sprintf("批量生成完成，成功 %d 条，失败 %d 条", successCount, failCount))

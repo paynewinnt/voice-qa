@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
@@ -15,8 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"voice-qa/internal/androidmanifest"
 	"voice-qa/internal/config"
 	"voice-qa/internal/perfetto"
+	"voice-qa/internal/performance"
 )
 
 func TestAdbTargetArgDetection(t *testing.T) {
@@ -85,6 +88,206 @@ func TestResolveAdbDeviceFromList(t *testing.T) {
 				t.Fatalf("resolveAdbDeviceFromList(%v) = %q, want %q", tc.devices, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestPerfLaunchTargetBuildsExplicitDeepLinkCommand(t *testing.T) {
+	target, err := normalizePerfLaunchTarget(PerfLaunchTarget{
+		Component: " com.zjdx.neuralnexus/.SplashActivity ",
+		Action:    " android.intent.action.VIEW ",
+		Categories: []string{
+			"android.intent.category.BROWSABLE",
+			" android.intent.category.BROWSABLE ",
+		},
+		DataURI: " aiquestion://open_page ",
+	})
+	if err != nil {
+		t.Fatalf("normalizePerfLaunchTarget() error = %v", err)
+	}
+
+	wantArgs := "shell\x00am\x00start\x00-W\x00-n\x00com.zjdx.neuralnexus/.SplashActivity\x00-a\x00android.intent.action.VIEW\x00-c\x00android.intent.category.BROWSABLE\x00-d\x00aiquestion://open_page"
+	if got := strings.Join(perfLaunchArgs(target), "\x00"); got != wantArgs {
+		t.Fatalf("perfLaunchArgs() = %q, want %q", got, wantArgs)
+	}
+	wantCommand := `adb -s 192.168.1.111:5555 shell "'am' 'start' '-W' '-n' 'com.zjdx.neuralnexus/.SplashActivity' '-a' 'android.intent.action.VIEW' '-c' 'android.intent.category.BROWSABLE' '-d' 'aiquestion://open_page'"`
+	if got := perfLaunchCommandText("192.168.1.111:5555", target); got != wantCommand {
+		t.Fatalf("perfLaunchCommandText() = %q, want %q", got, wantCommand)
+	}
+	if len(target.Categories) != 1 {
+		t.Fatalf("normalized categories = %v, want duplicates removed", target.Categories)
+	}
+}
+
+func TestPerfLaunchTargetRejectsInvalidIntentValues(t *testing.T) {
+	base := PerfLaunchTarget{Component: "com.example/.MainActivity"}
+	tests := []struct {
+		name   string
+		mutate func(*PerfLaunchTarget)
+	}{
+		{name: "action with whitespace", mutate: func(target *PerfLaunchTarget) { target.Action = "android.intent.action. VIEW" }},
+		{name: "invalid category", mutate: func(target *PerfLaunchTarget) { target.Categories = []string{"android.intent.category/BROWSABLE"} }},
+		{name: "data without scheme", mutate: func(target *PerfLaunchTarget) { target.DataURI = "open_page" }},
+		{name: "missing activity", mutate: func(target *PerfLaunchTarget) { target.Component = "com.example/" }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			target := base
+			tc.mutate(&target)
+			if _, err := normalizePerfLaunchTarget(target); err == nil {
+				t.Fatal("normalizePerfLaunchTarget() error = nil, want validation error")
+			}
+		})
+	}
+}
+
+func TestPackageIntentQueryArgsUseCurrentDeepLink(t *testing.T) {
+	target, err := normalizePerfIntentTarget(PerfLaunchTarget{
+		Action:     " android.intent.action.VIEW ",
+		Categories: []string{"android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"},
+		DataURI:    " aiquestion://open_page ",
+	})
+	if err != nil {
+		t.Fatalf("normalizePerfIntentTarget() error = %v", err)
+	}
+
+	args := packageIntentQueryArgs("device-1", "com.zjdx.neuralnexus", "query-activities", target)
+	want := "-s\x00device-1\x00shell\x00cmd\x00package\x00query-activities\x00--brief\x00--components\x00-a\x00android.intent.action.VIEW\x00-c\x00android.intent.category.DEFAULT\x00-c\x00android.intent.category.BROWSABLE\x00-d\x00aiquestion://open_page\x00-p\x00com.zjdx.neuralnexus"
+	if got := strings.Join(args, "\x00"); got != want {
+		t.Fatalf("packageIntentQueryArgs() = %q, want %q", got, want)
+	}
+}
+
+func TestParseComponentQueryOutputIncludesNonActivityClassNames(t *testing.T) {
+	output := strings.Join([]string{
+		"com.zjdx.neuralnexus/.SplashActivity",
+		"com.zjdx.neuralnexus/com.zjdx.router.DeepLinkDispatcher",
+		"com.other/.MainActivity",
+		"com.zjdx.neuralnexus/.SplashActivity",
+	}, "\n")
+	want := []string{
+		"com.zjdx.neuralnexus/.SplashActivity",
+		"com.zjdx.neuralnexus/com.zjdx.router.DeepLinkDispatcher",
+	}
+	got := parseComponentQueryOutput(output, "com.zjdx.neuralnexus")
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("parseComponentQueryOutput() = %v, want %v", got, want)
+	}
+}
+
+func TestPackageComponentRankerPrioritizesIntentMatch(t *testing.T) {
+	ranker := newPackageComponentRanker("com.example", true)
+	ranker.add("com.example/.MainActivity", 1000, "桌面启动入口")
+	ranker.add("com.example/.DeepLinkDispatcher", 1200, "当前 Intent 精确匹配")
+	ranker.add("com.example/.SettingsActivity", 300, "Activity 清单候选")
+
+	got := ranker.ranked()
+	if len(got) != 3 {
+		t.Fatalf("ranked candidates = %v, want 3 entries", got)
+	}
+	if got[0].Component != "com.example/.DeepLinkDispatcher" || got[0].Reason != "当前 Intent 精确匹配" {
+		t.Fatalf("top candidate = %+v, want exact deep link match", got[0])
+	}
+}
+
+func TestPackageComponentRankerMergesManifestMetadataAcrossComponentForms(t *testing.T) {
+	ranker := newPackageComponentRanker("com.example", true)
+	ranker.addGrouped("com.example/.SplashActivity", 1200, "当前 Intent 精确匹配", "intent")
+	ranker.merge(PackageComponentCandidate{
+		Component:     "com.example/com.example.SplashActivity",
+		Reason:        "Manifest 可处理当前 Intent",
+		Score:         1080,
+		Group:         "intent",
+		Manifest:      true,
+		Exported:      true,
+		ExportedKnown: true,
+		Enabled:       true,
+		EnabledKnown:  true,
+		Launchable:    true,
+		IntentFilters: []PackageIntentFilter{{Actions: []string{"android.intent.action.VIEW"}}},
+	}, true)
+
+	got := ranker.ranked()
+	if len(got) != 1 {
+		t.Fatalf("ranked candidates = %+v, want one canonical Activity", got)
+	}
+	if got[0].Component != "com.example/.SplashActivity" || !got[0].Manifest || !got[0].Launchable {
+		t.Fatalf("merged candidate = %+v", got[0])
+	}
+}
+
+func TestManifestMatchesDeepLinkIntent(t *testing.T) {
+	filters := []androidmanifest.IntentFilter{{
+		Actions:    []string{"android.intent.action.VIEW"},
+		Categories: []string{"android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"},
+		Data:       []androidmanifest.DataSpec{{Scheme: "aiquestion", Host: "open_page"}},
+	}}
+	target := PerfLaunchTarget{
+		Action:     "android.intent.action.VIEW",
+		Categories: []string{"android.intent.category.BROWSABLE"},
+		DataURI:    "aiquestion://open_page",
+	}
+	if !manifestMatchesIntent(filters, target) {
+		t.Fatal("manifestMatchesIntent() = false, want true")
+	}
+	target.DataURI = "aiquestion://other"
+	if manifestMatchesIntent(filters, target) {
+		t.Fatal("manifestMatchesIntent() = true for a different host")
+	}
+}
+
+func TestParseForegroundActivityPrefersResumedTargetPackage(t *testing.T) {
+	output := strings.Join([]string{
+		"mCurrentFocus=Window{abc u0 com.android.systemui/.SomeDialog}",
+		"mResumedActivity: ActivityRecord{abc u0 com.android.systemui/.OverlayActivity t7}",
+		"mResumedActivity: ActivityRecord{def u0 com.zjdx.neuralnexus/.MainActivity t42}",
+	}, "\n")
+	component, evidence := parseForegroundActivity(output, "com.zjdx.neuralnexus")
+	if component != "com.zjdx.neuralnexus/.MainActivity" {
+		t.Fatalf("component = %q, evidence = %q", component, evidence)
+	}
+	if !strings.Contains(evidence, "mResumedActivity") {
+		t.Fatalf("evidence = %q", evidence)
+	}
+}
+
+func TestParsePackageAPKPaths(t *testing.T) {
+	output := "package:/data/app/com.example/base.apk\r\nnoise.apk\r\npackage:/data/app/com.example/split_config.apk\r\npackage:/data/app/com.example/base.apk\r\n"
+	got := parsePackageAPKPaths(output)
+	want := []string{"/data/app/com.example/base.apk", "/data/app/com.example/split_config.apk"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("parsePackageAPKPaths() = %v, want %v", got, want)
+	}
+}
+
+func TestPerformanceFrontendPassesStructuredLaunchTarget(t *testing.T) {
+	frontend, err := os.ReadFile(filepath.Join("frontend", "dist", "index.html"))
+	if err != nil {
+		t.Fatalf("read frontend index: %v", err)
+	}
+	source := string(frontend)
+	for _, want := range []string{
+		`id="perfIntentEnabled"`,
+		`id="perfIntentAction"`,
+		`id="perfIntentCategories"`,
+		`id="perfIntentData"`,
+		`class="perf-component-heading"`,
+		`class="perf-intent-config" id="perfIntentConfig" hidden`,
+		`document.getElementById('perfIntentConfig').hidden = !enabled`,
+		`id="perfSingleForceStop" checked`,
+		`forceStop: document.getElementById('perfSingleForceStop').checked`,
+		`PerfStartLaunchTrace(params.serial, params.launch, opts)`,
+		`PerfRunLaunchBatch(params.serial, params.launch, opts)`,
+		`GetPackageComponentsForLaunch(serial, pkg, launch)`,
+		`智能匹配`,
+		`DeepScanPackageComponents(serial, packageName, launch)`,
+		`VerifyPackageLaunch(params.serial, params.launch, opts)`,
+		`id="perfVerifyForceStop" checked`,
+		`内部 Activity（ADB 不可直接启动）`,
+		`aiquestion://open_page`,
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("performance frontend does not contain %q", want)
+		}
 	}
 }
 
@@ -158,6 +361,11 @@ func TestGeneratePerfRecordsReportIncludesManualRecords(t *testing.T) {
 			Serial:           "device-1",
 			Component:        "com.example/.MainActivity",
 			PackageName:      "com.example",
+			LaunchAction:     "android.intent.action.VIEW",
+			LaunchCategories: []string{"android.intent.category.BROWSABLE"},
+			LaunchDataURI:    "example://open_page",
+			LaunchCommand:    `adb -s device-1 shell am start -W -n com.example/.MainActivity -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d "example://open_page"`,
+			ForceStopBefore:  true,
 			ManualDurationMS: duration,
 			ResultDir:        resultDir,
 			Timestamp:        startedAt.Format("2006-01-02 15:04:05.000"),
@@ -189,6 +397,8 @@ func TestGeneratePerfRecordsReportIncludesManualRecords(t *testing.T) {
 		"启动性能测试聚合报告",
 		"测试轮数: 5",
 		"通过“执行启动计时”开始测试",
+		`启动命令: adb -s device-1 shell am start -W -n com.example/.MainActivity -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d "example://open_page"`,
+		"启动前 force-stop: 是",
 		"以手动(ms)作为本次启动耗时的主要结论",
 		"手动(ms)表示用户看到页面完全加载好并可以进行下一步操作所需的全部时间",
 		"手动(ms)平均值: 1200.00 ms",
@@ -207,11 +417,35 @@ func TestGeneratePerfRecordsReportIncludesManualRecords(t *testing.T) {
 	}
 }
 
+func TestOverallPerformanceFrontendReadsSerializedGfxMetrics(t *testing.T) {
+	encoded, err := json.Marshal(performance.DeviceResult{
+		GfxInfo: performance.GfxMetrics{Available: true, JankyPercent: 12.5, P90MS: 18},
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal(DeviceResult) error = %v", err)
+	}
+	if !strings.Contains(string(encoded), `"gfxinfo":{"available":true`) {
+		t.Fatalf("DeviceResult JSON does not use the expected gfxinfo key: %s", encoded)
+	}
+
+	frontend, err := os.ReadFile(filepath.Join("frontend", "dist", "index.html"))
+	if err != nil {
+		t.Fatalf("read frontend index: %v", err)
+	}
+	source := string(frontend)
+	if !strings.Contains(source, "return device?.gfxinfo || device?.gfxInfo || {};") {
+		t.Fatal("overall performance UI does not read the serialized gfxinfo field")
+	}
+	if uses := strings.Count(source, "const gfx = perfOverallGfxMetrics(device);"); uses != 2 {
+		t.Fatalf("gfx metric accessor use count = %d, want result rendering and pass evaluation", uses)
+	}
+}
+
 func TestBuildPerfAggregateReportPrioritizesSelectedManualMetric(t *testing.T) {
 	runs := []perfetto.LaunchResult{
-		{Success: true, TotalTimeMS: 1575, WaitTimeMS: 1595, ManualDurationMS: 14625},
-		{Success: true, TotalTimeMS: 1640, WaitTimeMS: 1656, ManualDurationMS: 14819},
-		{Success: true, TotalTimeMS: 1662, WaitTimeMS: 1664, ManualDurationMS: 15135},
+		{Success: true, StopReason: "manual", TotalTimeMS: 1575, WaitTimeMS: 1595, ManualDurationMS: 14625},
+		{Success: true, StopReason: "manual", TotalTimeMS: 1640, WaitTimeMS: 1656, ManualDurationMS: 14819},
+		{Success: true, StopReason: "manual", TotalTimeMS: 1662, WaitTimeMS: 1664, ManualDurationMS: 15135},
 	}
 	batch := PerfBatchResult{Success: true, Successes: len(runs), Runs: runs, ResultDir: t.TempDir()}
 

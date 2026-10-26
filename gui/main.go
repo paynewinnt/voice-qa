@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -13,6 +14,11 @@ import (
 var assets embed.FS
 
 func main() {
+	if exitCode, handled := runNativeUpdaterMode(os.Args[1:]); handled {
+		os.Exit(exitCode)
+	}
+	scheduleNativeUpdaterCleanup(os.Args[1:])
+
 	// 创建应用实例
 	app := NewApp()
 

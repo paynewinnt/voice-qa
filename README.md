@@ -11,7 +11,7 @@
   - 多种声音可选（播音男声、标准女声等）
   - 批量文本转语音，可配置语音模板（前缀、后缀、静音间隔）
 - **播放模式测试**：播放语音 + adb logcat 记录 + 自动截图 + 视频录制 + 断言验证
-- **应用性能测试**：冷启动时间采集，支持 Component 候选下拉、`am start -W`、可选 Perfetto trace、logcat 时间线、批量统计和聚合报告
+- **应用性能测试**：保留冷启动时间、可选 Perfetto trace 和聚合统计，并新增多设备前台交互性能采集，覆盖 CPU、PSS、线程、帧、稳定性、AudioFocus、网络和完整证据报告
 - **设备管理**：ADB 连接/断开、多设备 APK 安装、手动录屏
 - Windows GUI 播放链路按选定设备执行，避免多设备误打
 - Windows GUI 每次播放生成独立会话目录，历史报告、日志、截图、录屏不互相覆盖
@@ -36,7 +36,8 @@ voice-qa/
 │   ├── player/             # 音频播放
 │   ├── tts/                # TTS 引擎 (Edge TTS / Piper)
 │   ├── adb/                # ADB 操作（logcat、截图）
-│   └── perfetto/           # 启动时间 trace、logcat 分析和报告生成
+│   ├── perfetto/           # 启动时间 trace、logcat 分析和报告生成
+│   └── performance/        # 综合性能采集、指标解析、阈值判定和 Markdown 报告
 ├── bin/                    # 构建时自动下载的本地工具缓存（不提交）
 │   ├── piper/              # Linux Piper 引擎
 │   ├── piper-windows/      # Windows Piper 引擎
@@ -235,7 +236,7 @@ $env:VOICE_QA_ASSET_BASE_URL = "https://example.com/voice-qa-assets"
 
 生成的音频文件命名格式为：`序号 + 文本内容.wav`
 
-生成阶段会在输出目录维护 `manifest.json`，用于记录 `wav -> 原文` 映射，播放模式会优先读取它来做断言。
+GUI 每完成一条语音，都会在输出目录原子更新 `manifest.json`，记录 `wav -> 原文` 映射，播放模式优先读取它来做断言。点击停止会取消当前 Edge 网络请求或 Piper 合成进程，不再生成后续模板片段；已完成的语音及映射会保留。本次生成使用开始时的配置快照，运行中修改配置只影响后续任务。
 
 播放阶段不会再把 `log/png/mp4/report` 直接铺在输出目录根下，而是为每次执行创建独立会话目录 `playtest-*`。
 
@@ -309,16 +310,31 @@ adb devices
 ...
 ```
 
-## 启动时间测试
+### APK 覆盖安装
 
-Windows GUI 的「启动时间测试」用于采集 Android 应用冷启动数据。典型流程：
+设备管理中的 APK 安装使用保留数据覆盖方式，不会自动卸载应用、执行 `pm clear` 或强制降级。安装前检查目标是否在线；网络设备离线时只重连当前目标，不重启全局 ADB 服务。
+
+APK 会先复制为临时英文文件名，再传输到设备的独立临时路径，最后执行 `pm install -r`，避免流式安装失败和中文路径传递问题。网络传输异常最多重试一次；连接检查每步最多 15 秒、单次传输最多 5 分钟、Package Manager 安装最多 3 分钟。GUI 显示当前阶段和原始错误，结束时清理本次临时文件。安装阶段超时或连接中断时不盲目重复安装，而是提示结果不确定，需先恢复连接并查询应用版本。
+
+同版本覆盖不需要先卸载，但新旧 APK 必须兼容：签名不一致或 `versionCode` 低于已安装版本时，工具会明确提示并保留原应用数据。显示的 `versionName` 相同不代表 `versionCode` 一致。存储不足、CPU 架构不匹配、APK 解析失败和设备安装限制也会分别显示原因。
+
+## 性能测试
+
+Windows GUI 的「性能测试」包含启动性能和应用综合性能两部分。
+
+### 启动性能
+
+用于采集 Android 应用冷启动数据。典型流程：
 
 1. 在「设备管理」中连接并选择目标设备。
 2. 选择应用包名。选择后 GUI 会自动解析可能的 Activity Component，并优先填入 launcher Activity。
 3. 在「完整 Component 名称」下拉框中选择候选项，或在输入框中手动填写完整值，例如 `com.example/.MainActivity`。
-4. 根据需要执行 `force-stop`、`pm clear`、返回首页或停止第三方应用。
-5. 执行单次启动计时，或设置次数、间隔和采集时长后执行批量启动测试。
-6. 批量完成后点击「生成聚合测试报告」，会在批量结果目录生成 `aggregate_report.txt`。
+4. 需要通过 Deep Link 启动时，启用「Intent / Deep Link 启动」，填写 Action、Category 和 Data URI。工具会按独立参数执行，例如 `am start -W -n com.example/.SplashActivity -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d "example://open_page"`。
+5. 单次计时可勾选「启动前 force-stop（冷启动）」直接执行完整冷启动链路；批量测试继续使用批量区的 `force-stop`、`pm clear` 选项。
+6. 执行单次启动计时，或设置次数、间隔和采集时长后执行批量启动测试。
+7. 在测试记录中勾选参与统计的记录，选择 TotalTime、手动(ms) 或两者，再计算平均值或生成聚合报告。单次和批量记录均可参与；不同设备、Component、Intent 参数及 force-stop / pm clear 方式分别统计，不计算跨组平均值。
+
+手动(ms)以实际发出 `am start` 的后端时间为起点，以用户点击停止后后端收到停止请求的时间为终点，不包含启动前的准备过程。仅成功启动并由用户主动停止的记录计入手动统计，批量采集、自动超时、失败和无法确认停止方式的旧记录不计入；同时选择两种指标且存在有效手动记录时，报告以手动(ms)为主要结论。Deep Link 的 `&`、空格、引号等参数由工具统一进行 Android shell 转义，无需手动添加转义符。
 
 核心产物：
 
@@ -332,6 +348,31 @@ Windows GUI 的「启动时间测试」用于采集 Android 应用冷启动数�
 
 Perfetto 是可选能力。未勾选「启用 Perfetto」时，启动测试只依赖 `am start -W` 和 logcat；设备不支持 Perfetto 不应阻塞基础启动计时。
 
+### 应用综合性能
+
+综合性能测试位于启动测试记录下方，适合对已经运行并位于前台的 APK 执行可重复业务交互采样：
+
+1. 在每台目标设备上提前打开应用，并停留在相同的可操作前台页面。
+2. 填写包名，勾选一台或多台设备；多设备按顺序测试，避免采集相互干扰。
+3. 每行填写一个 `名称, X, Y` 场景；使用 `-1,-1` 时仅采样当前页面，不发送点击。
+4. 设置轮数、交互后等待时间和建议阈值，可选关联当前启动测试记录。
+5. 点击「开始综合性能测试」。运行中可点击「停止测试并保存」，工具会保留已经采集的结果和证据。
+
+综合性能测试不会执行 `am force-stop`、`pm clear`、`am start` 或 `monkey`，因此不会主动改变应用启动状态。每个样本采集目标进程的 `top` CPU、`/proc/<pid>/stat` 区间 CPU、PSS、线程、RSS、PID 和前台状态；测试窗口还会采集 `gfxinfo`、连续 logcat、崩溃/ANR/AudioFocus、UID 网络增量、截图、UI XML、设备和 APK 元数据。
+
+每次交互前及采样后均核对目标进程和前台包名；目标离开前台或进程变化时停止后续点击并保留当前证据。CPU/PSS 有效样本不足、零渲染帧或缺少帧 P90 时，不会判定通过。验证启动入口、启动计时、综合性能测试、应用控制和 APK 安装按设备互斥；自定义 ADB 命令和外部工具仍需由操作者避免干扰测试。关联启动数据仅纳入当前包名及所选设备的成功记录，并按启动条件分组。
+
+核心产物位于 `output/performance/performance-*`：
+
+| 文件 | 说明 |
+|------|------|
+| `performance_report.md` | 13 个章节的综合性能报告，包含总体结论、核心数据、场景分解、启动数据、问题建议、证据和限制 |
+| `protocol.json` | 包名、设备、场景、轮数、等待时间、禁用命令和阈值 |
+| `combined-results.json` | 全部设备结构化结果、错误和最终判定 |
+| `device-*/samples.csv` | 每次场景交互的逐样本指标 |
+| `device-*/summary.json` | 单设备结构化汇总 |
+| `device-*/*.txt|png|xml` | meminfo、gfxinfo、logcat、系统信息、前后截图和 UI 证据 |
+
 ## Windows GUI 版本
 
 GUI 版本基于 Wails 框架开发，提供完整图形界面，包含 6 个功能标签页：
@@ -339,7 +380,7 @@ GUI 版本基于 Wails 框架开发，提供完整图形界面，包含 6 个功
 | 标签页 | 功能 |
 |--------|------|
 | **设备管理** | ADB 设备连接/断开（支持 IP 连接），多设备 APK 安装，手动录屏到 `output/recordings`，按 APK 包名查询/清空/保存 logcat，分析 `com.zjdx.neuralnexus` 心跳和悬浮弹窗记录 |
-| **启动时间测试** | 应用冷启动计时（毫秒精度），支持 Component 候选下拉、命令式应用控制、可选 Perfetto trace、logcat 时间线、单次/批量统计和聚合报告 |
+| **性能测试** | 启动性能计时与聚合报告；多设备综合性能场景采样，覆盖 CPU、PSS、线程、渲染、稳定性、AudioFocus、网络、截图/UI 证据和 Markdown 综合报告 |
 | **生成语音** | 文本列表管理，批量 TTS 生成，实时进度（支持中途停止） |
 | **播放模式** | 选择目标设备后执行播放测试，自动采集 logcat / 截图 / 录屏并输出独立会话目录（支持中途停止） |
 | **配置设置** | 语音引擎选择，模板可视化编辑，视频录制参数配置 |
@@ -354,7 +395,7 @@ tts-gui-windows-amd64/
 ├── models/                    # 语音模型
 ├── adb/                       # ADB 工具
 ├── ffmpeg/                    # 视频录制工具
-└── output/                    # 输出目录（wav、manifest、recordings、perf、playtest-*）
+└── output/                    # 输出目录（wav、manifest、recordings、perf、performance、playtest-*）
 ```
 
 ## Windows 安装包
@@ -399,7 +440,11 @@ tts-gui-windows-amd64-v<version>.zip
 curl -fL https://124.223.218.142/voice-qa/latest.json
 ```
 
-GUI 下载时显示实时进度，完成 SHA256 校验后会启动独立更新器并退出当前进程。更新器备份并覆盖程序文件，保留 `output/`、`config.json`、`text.txt` 和不属于新包的用户文件，成功后删除下载的 zip 并自动重启原路径下的 EXE；安装失败会回滚并重新打开旧版本，详细记录写入 `output/update-install.log`。大文件下载不设置固定总时限，只要持续收到数据就会继续；若连续 5 分钟没有任何下载数据，程序才会中止并提示检查网络。局域网 IIS 仍可作为手动填写的自定义更新源，见 [Windows GUI 局域网更新指南](docs/windows-gui-lan-update.md)。
+GUI 下载时显示实时进度，完成 SHA256 校验后会复制当前 EXE 并启动独立的 Windows 原生更新模式，不依赖 PowerShell。原生更新器等待 GUI 完整退出后备份并覆盖程序文件，遇到短暂文件占用时自动重试；它会保留 `output/`、`config.json`、`text.txt` 和不属于新包的用户文件，成功后删除下载的 zip 并自动重启原路径下的 EXE。安装失败会回滚并重新打开旧版本，详细记录写入 `output/update-install.log`。启动更新前还会检查当前程序目录是否可写；如果程序位于需要管理员权限的目录，应先整体移动到普通用户可写目录。大文件下载不设置固定总时限，只要持续收到数据就会继续；若连续 5 分钟没有任何下载数据，程序才会中止并提示检查网络。局域网 IIS 仍可作为手动填写的自定义更新源，见 [Windows GUI 局域网更新指南](docs/windows-gui-lan-update.md)。
+
+更新目录采用逐文件合并：仅替换新包携带的同名文件，保留 `models/`、`adb/` 等子目录中额外添加的文件；遇到文件与目录类型冲突或符号链接时中止并回滚，不直接删除用户路径。
+
+本地回归检查：`go test ./...`、`go vet ./...`；前端交互回归使用 `node --test gui/frontend/tests/regression.test.cjs`，无需安装前端依赖。
 
 ## 技术栈
 

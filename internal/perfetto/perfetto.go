@@ -24,29 +24,43 @@ type Options struct {
 }
 
 type LaunchResult struct {
-	Success          bool             `json:"success"`
-	Message          string           `json:"message"`
-	Serial           string           `json:"serial"`
-	Component        string           `json:"component"`
-	PackageName      string           `json:"packageName"`
-	ThisTimeMS       int              `json:"thisTimeMs"`
-	TotalTimeMS      int              `json:"totalTimeMs"`
-	WaitTimeMS       int              `json:"waitTimeMs"`
-	ManualDurationMS int64            `json:"manualDurationMs"`
-	RawOutput        string           `json:"rawOutput"`
-	TraceFile        string           `json:"traceFile"`
-	LogcatFile       string           `json:"logcatFile"`
-	ReportFile       string           `json:"reportFile"`
-	TimelineFile     string           `json:"timelineFile"`
-	TraceSizeBytes   int64            `json:"traceSizeBytes"`
-	TraceAnalyzable  bool             `json:"traceAnalyzable"`
-	TraceWarning     string           `json:"traceWarning"`
-	ResultDir        string           `json:"resultDir"`
-	Timestamp        string           `json:"timestamp"`
-	StoppedAt        string           `json:"stoppedAt"`
-	StopReason       string           `json:"stopReason"`
-	Capability       CapabilityResult `json:"capability"`
-	LogcatAnalysis   LogcatAnalysis   `json:"logcatAnalysis"`
+	Success           bool             `json:"success"`
+	Message           string           `json:"message"`
+	Serial            string           `json:"serial"`
+	Component         string           `json:"component"`
+	PackageName       string           `json:"packageName"`
+	LaunchAction      string           `json:"launchAction,omitempty"`
+	LaunchCategories  []string         `json:"launchCategories,omitempty"`
+	LaunchDataURI     string           `json:"launchDataUri,omitempty"`
+	LaunchCommand     string           `json:"launchCommand,omitempty"`
+	ForceStopBefore   bool             `json:"forceStopBefore,omitempty"`
+	ThisTimeMS        int              `json:"thisTimeMs"`
+	TotalTimeMS       int              `json:"totalTimeMs"`
+	WaitTimeMS        int              `json:"waitTimeMs"`
+	ManualDurationMS  int64            `json:"manualDurationMs"`
+	RawOutput         string           `json:"rawOutput"`
+	TraceFile         string           `json:"traceFile"`
+	LogcatFile        string           `json:"logcatFile"`
+	ReportFile        string           `json:"reportFile"`
+	TimelineFile      string           `json:"timelineFile"`
+	TraceSizeBytes    int64            `json:"traceSizeBytes"`
+	TraceAnalyzable   bool             `json:"traceAnalyzable"`
+	TraceWarning      string           `json:"traceWarning"`
+	ResultDir         string           `json:"resultDir"`
+	Timestamp         string           `json:"timestamp"`
+	StoppedAt         string           `json:"stoppedAt"`
+	StopReason        string           `json:"stopReason"`
+	CaptureDurationMS int64            `json:"captureDurationMs"`
+	ClearDataBefore   bool             `json:"clearDataBefore"`
+	Capability        CapabilityResult `json:"capability"`
+	LogcatAnalysis    LogcatAnalysis   `json:"logcatAnalysis"`
+}
+
+func (r LaunchResult) ValidManualDurationMS() int64 {
+	if r.Success && r.StopReason == "manual" && r.ManualDurationMS > 0 {
+		return r.ManualDurationMS
+	}
+	return 0
 }
 
 type CapabilityResult struct {

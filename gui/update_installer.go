@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,138 +18,6 @@ type UpdateInstallResult struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
-
-const windowsUpdateScript = `param(
-    [Parameter(Mandatory = $true)][string]$ZipPath,
-    [Parameter(Mandatory = $true)][string]$InstallDir,
-    [Parameter(Mandatory = $true)][string]$ExeName,
-    [Parameter(Mandatory = $true)][int]$ParentProcessId
-)
-
-$ErrorActionPreference = 'Stop'
-$stageDir = Join-Path $env:TEMP ('voice-qa-update-stage-' + [guid]::NewGuid().ToString('N'))
-$installParent = Split-Path -Parent $InstallDir
-$backupDir = Join-Path $installParent ('.voice-qa-update-backup-' + [guid]::NewGuid().ToString('N'))
-$logDir = Join-Path $InstallDir 'output'
-$logPath = Join-Path $logDir 'update-install.log'
-$managedNames = New-Object 'System.Collections.Generic.List[string]'
-$preservedNames = @('output', 'config.json', 'text.txt')
-$exitCode = 0
-
-function Write-UpdateLog([string]$Message) {
-    try {
-        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-        Add-Content -LiteralPath $logPath -Value ('[{0}] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message) -Encoding UTF8
-    } catch {
-    }
-}
-
-function Restore-Update {
-    foreach ($name in @($managedNames)) {
-        $target = Join-Path $InstallDir $name
-        if (Test-Path -LiteralPath $target) {
-            Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-    if (Test-Path -LiteralPath $backupDir -PathType Container) {
-        Get-ChildItem -LiteralPath $backupDir -Force | ForEach-Object {
-            Move-Item -LiteralPath $_.FullName -Destination (Join-Path $InstallDir $_.Name) -Force
-        }
-        Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
-try {
-    Write-UpdateLog 'Waiting for the running application to exit.'
-    $deadline = [DateTime]::UtcNow.AddSeconds(120)
-    while ($null -ne (Get-Process -Id $ParentProcessId -ErrorAction SilentlyContinue)) {
-        if ([DateTime]::UtcNow -ge $deadline) {
-            throw 'Timed out waiting for the running application to exit.'
-        }
-        Start-Sleep -Milliseconds 300
-    }
-
-    $installPrefix = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\') + '\'
-    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installPrefix, [StringComparison]::OrdinalIgnoreCase)
-    } | ForEach-Object {
-        Write-UpdateLog ('Stopping residual process ' + $_.Name + ' (' + $_.ProcessId + ').')
-        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-    }
-    Start-Sleep -Milliseconds 500
-
-    New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $stageDir -Force
-    $roots = @(Get-ChildItem -LiteralPath $stageDir -Force)
-    if ($roots.Count -ne 1 -or -not $roots[0].PSIsContainer) {
-        throw 'The update archive must contain exactly one top-level directory.'
-    }
-
-    $sourceRoot = $roots[0].FullName
-    $sourceExe = Join-Path $sourceRoot $ExeName
-    if (-not (Test-Path -LiteralPath $sourceExe -PathType Leaf)) {
-        $rootExecutables = @(Get-ChildItem -LiteralPath $sourceRoot -File -Filter '*.exe')
-        if ($rootExecutables.Count -ne 1) {
-            throw ('The update archive does not contain ' + $ExeName + ' or exactly one root executable.')
-        }
-        $sourceExe = $rootExecutables[0].FullName
-    }
-
-    New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
-    foreach ($item in Get-ChildItem -LiteralPath $sourceRoot -Force) {
-        $targetName = $item.Name
-        if ($item.FullName.Equals($sourceExe, [StringComparison]::OrdinalIgnoreCase)) {
-            $targetName = $ExeName
-        }
-        $target = Join-Path $InstallDir $targetName
-        if ($preservedNames -contains $targetName) {
-            if (-not (Test-Path -LiteralPath $target)) {
-                Copy-Item -LiteralPath $item.FullName -Destination $target -Recurse -Force
-            }
-            continue
-        }
-
-        $managedNames.Add($targetName)
-        if (Test-Path -LiteralPath $target) {
-            Move-Item -LiteralPath $target -Destination (Join-Path $backupDir $targetName) -Force
-        }
-        Copy-Item -LiteralPath $item.FullName -Destination $target -Recurse -Force
-    }
-
-    $installedExe = Join-Path $InstallDir $ExeName
-    if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf)) {
-        throw 'The updated executable was not installed.'
-    }
-
-    $newProcess = Start-Process -FilePath $installedExe -WorkingDirectory $InstallDir -PassThru
-    Start-Sleep -Milliseconds 800
-    if ($newProcess.HasExited) {
-        throw 'The updated application exited immediately after launch.'
-    }
-
-    Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $ZipPath -Force -ErrorAction SilentlyContinue
-    Write-UpdateLog 'Update installed successfully.'
-} catch {
-    $exitCode = 1
-    Write-UpdateLog ('Update failed: ' + $_.Exception.Message)
-    try {
-        Restore-Update
-        $restoredExe = Join-Path $InstallDir $ExeName
-        if (Test-Path -LiteralPath $restoredExe -PathType Leaf) {
-            Start-Process -FilePath $restoredExe -WorkingDirectory $InstallDir | Out-Null
-        }
-    } catch {
-        Write-UpdateLog ('Rollback failed: ' + $_.Exception.Message)
-    }
-} finally {
-    Remove-Item -LiteralPath $stageDir -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-Start-Sleep -Milliseconds 500
-Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-exit $exitCode
-`
 
 func (a *App) setDownloadedUpdatePath(path string) {
 	a.updateMu.Lock()
@@ -207,22 +76,60 @@ func validateTrustedUpdatePath(requestedPath, trustedPath string) (string, error
 	return requested, nil
 }
 
-func writeWindowsUpdateScript() (string, error) {
-	file, err := os.CreateTemp("", "voice-qa-updater-*.ps1")
+func ensureInstallDirectoryWritable(installDir string) error {
+	file, err := os.CreateTemp(installDir, ".voice-qa-update-write-check-*")
 	if err != nil {
-		return "", fmt.Errorf("创建更新脚本失败: %w", err)
+		return fmt.Errorf("程序目录不可写，请将程序移到普通目录后重试: %w", err)
 	}
 	path := file.Name()
-	if _, err := file.WriteString(windowsUpdateScript); err != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
-		return "", fmt.Errorf("写入更新脚本失败: %w", err)
-	}
 	if err := file.Close(); err != nil {
 		_ = os.Remove(path)
-		return "", fmt.Errorf("关闭更新脚本失败: %w", err)
+		return fmt.Errorf("检查程序目录写权限失败: %w", err)
 	}
-	return path, nil
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("检查程序目录写权限失败: %w", err)
+	}
+	return nil
+}
+
+func createNativeUpdaterCopy(executablePath string) (string, error) {
+	file, err := os.CreateTemp("", nativeUpdaterFilePrefix+"*.exe")
+	if err != nil {
+		return "", fmt.Errorf("创建原生更新程序失败: %w", err)
+	}
+	updaterPath := file.Name()
+	if err := file.Close(); err != nil {
+		_ = os.Remove(updaterPath)
+		return "", fmt.Errorf("创建原生更新程序失败: %w", err)
+	}
+
+	source, err := os.Open(executablePath)
+	if err != nil {
+		_ = os.Remove(updaterPath)
+		return "", fmt.Errorf("读取当前程序失败: %w", err)
+	}
+	destination, err := os.OpenFile(updaterPath, os.O_WRONLY|os.O_TRUNC, 0700)
+	if err != nil {
+		_ = source.Close()
+		_ = os.Remove(updaterPath)
+		return "", fmt.Errorf("写入原生更新程序失败: %w", err)
+	}
+	_, copyErr := io.Copy(destination, source)
+	sourceCloseErr := source.Close()
+	destinationCloseErr := destination.Close()
+	if copyErr != nil {
+		_ = os.Remove(updaterPath)
+		return "", fmt.Errorf("复制原生更新程序失败: %w", copyErr)
+	}
+	if sourceCloseErr != nil {
+		_ = os.Remove(updaterPath)
+		return "", fmt.Errorf("关闭当前程序文件失败: %w", sourceCloseErr)
+	}
+	if destinationCloseErr != nil {
+		_ = os.Remove(updaterPath)
+		return "", fmt.Errorf("关闭原生更新程序失败: %w", destinationCloseErr)
+	}
+	return updaterPath, nil
 }
 
 func (a *App) InstallUpdateAndRestart(updatePath string) UpdateInstallResult {
@@ -245,28 +152,28 @@ func (a *App) InstallUpdateAndRestart(updatePath string) UpdateInstallResult {
 	if err != nil {
 		return UpdateInstallResult{Success: false, Message: fmt.Sprintf("解析程序路径失败: %v", err)}
 	}
+	installDir := filepath.Dir(executablePath)
+	if err := ensureInstallDirectoryWritable(installDir); err != nil {
+		return UpdateInstallResult{Success: false, Message: err.Error()}
+	}
 
-	scriptPath, err := writeWindowsUpdateScript()
+	updaterPath, err := createNativeUpdaterCopy(executablePath)
 	if err != nil {
 		return UpdateInstallResult{Success: false, Message: err.Error()}
 	}
-	installDir := filepath.Dir(executablePath)
 	cmd := exec.Command(
-		"powershell.exe",
-		"-NoLogo",
-		"-NoProfile",
-		"-NonInteractive",
-		"-ExecutionPolicy", "Bypass",
-		"-WindowStyle", "Hidden",
-		"-File", scriptPath,
-		"-ZipPath", trustedPath,
-		"-InstallDir", installDir,
-		"-ExeName", filepath.Base(executablePath),
-		"-ParentProcessId", strconv.Itoa(os.Getpid()),
+		updaterPath,
+		nativeUpdateModeFlag,
+		"-zip", trustedPath,
+		"-install-dir", installDir,
+		"-exe-name", filepath.Base(executablePath),
+		"-parent-pid", strconv.Itoa(os.Getpid()),
 	)
+	cmd.Dir = installDir
+	hideConsoleWindow(cmd)
 	if err := cmd.Start(); err != nil {
-		_ = os.Remove(scriptPath)
-		return UpdateInstallResult{Success: false, Message: fmt.Sprintf("启动更新程序失败: %v", err)}
+		_ = os.Remove(updaterPath)
+		return UpdateInstallResult{Success: false, Message: fmt.Sprintf("启动原生更新程序失败: %v", err)}
 	}
 	_ = cmd.Process.Release()
 	a.setDownloadedUpdatePath("")
@@ -276,5 +183,5 @@ func (a *App) InstallUpdateAndRestart(updatePath string) UpdateInstallResult {
 		time.Sleep(500 * time.Millisecond)
 		runtime.Quit(ctx)
 	}()
-	return UpdateInstallResult{Success: true, Message: "更新程序已启动，应用即将自动重启"}
+	return UpdateInstallResult{Success: true, Message: "原生更新程序已启动，应用即将自动重启"}
 }

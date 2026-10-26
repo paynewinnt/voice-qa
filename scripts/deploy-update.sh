@@ -16,12 +16,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
-SSH_ARGS=()
-SCP_ARGS=()
-if [ -n "$SSH_CONTROL_PATH" ]; then
-    SSH_ARGS=(-o "ControlPath=$SSH_CONTROL_PATH")
-    SCP_ARGS=(-o "ControlPath=$SSH_CONTROL_PATH")
-fi
+ssh_remote() {
+    if [ -n "$SSH_CONTROL_PATH" ]; then
+        ssh -o "ControlPath=$SSH_CONTROL_PATH" "$@"
+    else
+        ssh "$@"
+    fi
+}
+
+scp_remote() {
+    if [ -n "$SSH_CONTROL_PATH" ]; then
+        scp -o "ControlPath=$SSH_CONTROL_PATH" "$@"
+    else
+        scp "$@"
+    fi
+}
 
 if [ ! -f "$MANIFEST_PATH" ]; then
     echo "缺少 $MANIFEST_PATH，请先构建 Windows GUI 包" >&2
@@ -168,12 +177,12 @@ fi
 REMOTE_ARCHIVE_TMP="$REMOTE_DIR/.${ARCHIVE_NAME}.uploading"
 REMOTE_MANIFEST_TMP="$REMOTE_DIR/.latest.json.uploading"
 
-ssh "${SSH_ARGS[@]}" "$DEPLOY_HOST" "install -d -m 0755 '$REMOTE_DIR'"
-scp "${SCP_ARGS[@]}" "$ARCHIVE_PATH" "$DEPLOY_HOST:$REMOTE_ARCHIVE_TMP"
-ssh "${SSH_ARGS[@]}" "$DEPLOY_HOST" "printf '%s  %s\n' '$EXPECTED_SHA256' '$REMOTE_ARCHIVE_TMP' | sha256sum -c - && install -m 0644 '$REMOTE_ARCHIVE_TMP' '$REMOTE_DIR/$ARCHIVE_NAME' && rm -f '$REMOTE_ARCHIVE_TMP'"
-scp "${SCP_ARGS[@]}" "$MANIFEST_PATH" "$DEPLOY_HOST:$REMOTE_MANIFEST_TMP"
-ssh "${SSH_ARGS[@]}" "$DEPLOY_HOST" "install -m 0644 '$REMOTE_MANIFEST_TMP' '$REMOTE_DIR/latest.json' && rm -f '$REMOTE_MANIFEST_TMP'"
-ssh "${SSH_ARGS[@]}" "$DEPLOY_HOST" "find '$REMOTE_DIR' -maxdepth 1 -type f -name '*.zip' ! -name '$ARCHIVE_NAME' -delete"
+ssh_remote "$DEPLOY_HOST" "install -d -m 0755 '$REMOTE_DIR'"
+scp_remote "$ARCHIVE_PATH" "$DEPLOY_HOST:$REMOTE_ARCHIVE_TMP"
+ssh_remote "$DEPLOY_HOST" "printf '%s  %s\n' '$EXPECTED_SHA256' '$REMOTE_ARCHIVE_TMP' | sha256sum -c - && install -m 0644 '$REMOTE_ARCHIVE_TMP' '$REMOTE_DIR/$ARCHIVE_NAME' && rm -f '$REMOTE_ARCHIVE_TMP'"
+scp_remote "$MANIFEST_PATH" "$DEPLOY_HOST:$REMOTE_MANIFEST_TMP"
+ssh_remote "$DEPLOY_HOST" "install -m 0644 '$REMOTE_MANIFEST_TMP' '$REMOTE_DIR/latest.json' && rm -f '$REMOTE_MANIFEST_TMP'"
+ssh_remote "$DEPLOY_HOST" "find '$REMOTE_DIR' -maxdepth 1 -type f -name '*.zip' ! -name '$ARCHIVE_NAME' -delete"
 
 echo "部署完成: $PUBLIC_MANIFEST_URL"
 echo "云服务器仅保留最新安装包: $ARCHIVE_NAME"
