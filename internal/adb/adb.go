@@ -57,9 +57,12 @@ func findFFmpeg() string {
 
 // adbPath 缓存 adb 可执行文件路径
 var adbPath string
+var adbPathMu sync.Mutex
 
 // findAdb 查找 adb 可执行文件
 func findAdb() string {
+	adbPathMu.Lock()
+	defer adbPathMu.Unlock()
 	if adbPath != "" {
 		return adbPath
 	}
@@ -335,29 +338,7 @@ func CheckDevice() error {
 
 // Connect 通过 IP 连接 ADB 设备
 func Connect(ip string) (string, error) {
-	adb := findAdb()
-
-	// 默认端口 5555
-	address := ip
-	if !strings.Contains(ip, ":") {
-		address = ip + ":5555"
-	}
-
-	cmd := exec.Command(adb, "connect", address)
-	hideWindow(cmd)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("连接失败: %s", string(output))
-	}
-
-	result := string(output)
-	if strings.Contains(result, "connected") {
-		return fmt.Sprintf("已连接到 %s", address), nil
-	} else if strings.Contains(result, "already connected") {
-		return fmt.Sprintf("已连接到 %s", address), nil
-	}
-
-	return "", fmt.Errorf("连接失败: %s", result)
+	return ConnectContext(context.Background(), ip)
 }
 
 // WriteLogMarker 写入一条日志标记，用于后续从完整日志中裁剪本次播放窗口。

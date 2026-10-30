@@ -1144,39 +1144,104 @@
             padding: 6px 8px !important;
         }
 
-        #devmgr .dev-device-section { grid-column: span 6; }
-        #devmgr .dev-record-section,
-        #devmgr .dev-install-section { grid-column: span 3; }
-
-        #devmgr .dev-command-section,
-        #devmgr .dev-log-section {
+        .dev-primary-workspace {
             grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+            gap: 8px;
+            height: clamp(620px, calc(100vh - 280px), 780px);
+            min-width: 0;
+            align-items: stretch;
+        }
+
+        .dev-device-column {
+            grid-column: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 0;
+            min-height: 0;
+        }
+
+        .dev-connect-section,
+        .dev-record-section {
+            flex: 0 0 auto;
+        }
+
+        .dev-device-section {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 0;
+            min-height: 160px;
+        }
+
+        #devmgr .dev-install-section { grid-column: 2; }
+        #devmgr .dev-command-section { grid-column: 3; }
+        #devmgr .dev-log-section { grid-column: 1 / -1; }
+
+        .dev-install-section,
+        .dev-command-section {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .dev-primary-workspace .section-header,
+        .dev-install-section > :not(.output-console) {
+            flex-shrink: 0;
+        }
+
+        .dev-primary-workspace .status-text {
+            max-height: 54px;
+            overflow-y: auto;
+            overflow-wrap: anywhere;
+        }
+
+        .dev-connect-section .adb-connect-area input {
+            width: 100%;
+            min-width: 0;
+        }
+
+        .dev-connect-section .alert {
+            margin-bottom: 0;
+            overflow-wrap: anywhere;
         }
 
         .dev-device-section .table-shell {
-            max-height: 104px;
+            flex: 1 1 0;
+            min-height: 70px;
             overflow-y: auto;
         }
 
-        .dev-device-workspace {
-            display: grid;
-            grid-template-columns: minmax(250px, 5fr) minmax(0, 7fr);
-            gap: 8px;
-            align-items: start;
+        .dev-device-section table {
+            table-layout: fixed;
         }
 
-        .dev-device-subtitle {
-            margin: 0 0 5px;
-            color: var(--text-muted);
-            font-size: 12px;
-            font-weight: 700;
+        .dev-device-section th {
+            position: sticky;
+            top: 0;
+            background: #f5f5f5;
+        }
+
+        .dev-device-section td {
+            overflow-wrap: anywhere;
+        }
+
+        .dev-device-section .btn-group {
+            flex-shrink: 0;
         }
 
         .dev-command-workspace {
-            display: grid;
-            grid-template-columns: minmax(520px, 5fr) minmax(0, 7fr);
-            gap: 10px;
-            align-items: start;
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 0;
+            min-height: 0;
+        }
+
+        .dev-command-inputs {
+            flex: 0 1 auto;
+            min-height: 0;
+            overflow-y: auto;
         }
 
         .dev-command-fields {
@@ -1193,10 +1258,15 @@
         .dev-command-fields .adb-command-box textarea {
             height: 58px;
             min-height: 58px;
+            max-height: 160px;
         }
 
         .dev-command-result {
+            display: flex;
+            flex-direction: column;
+            flex: 1 0 180px;
             min-width: 0;
+            min-height: 180px;
         }
 
         .dev-command-controls {
@@ -1275,6 +1345,8 @@
         .dev-command-history-list {
             display: grid;
             gap: 4px;
+            max-height: 140px;
+            overflow-y: auto;
         }
 
         .dev-command-history-item {
@@ -1379,19 +1451,29 @@
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
-        .dev-install-section .output-console.active {
-            max-height: 96px;
+        .dev-install-section .output-console.active,
+        .dev-command-section .output-console.active {
+            flex: 1 1 0;
+            min-height: 160px;
+            max-height: none;
+            line-height: 1.5;
+            overscroll-behavior: contain;
         }
 
         #devApkList {
+            max-height: 128px;
+            overflow-y: auto;
             overflow-wrap: anywhere;
         }
 
-        .dev-command-section .output-console.active {
-            height: clamp(140px, 18vh, 190px);
-            min-height: 140px;
-            max-height: 190px;
-            resize: vertical;
+        #devOutput:empty::before {
+            content: "暂无操作日志";
+            color: #a8b0bc;
+        }
+
+        #devCommandOutput:empty::before {
+            content: "暂无命令输出";
+            color: #a8b0bc;
         }
 
         #devLogOutput.output-console.active {
@@ -1767,7 +1849,6 @@
                 grid-column: span 6;
             }
 
-            #devmgr .dev-command-section,
             #devmgr .dev-log-section,
             #perf .perf-timing-section {
                 grid-column: 1 / -1;
@@ -1816,9 +1897,6 @@
                 grid-column: 1 / -1;
             }
 
-            #devmgr .dev-device-section,
-            #devmgr .dev-record-section,
-            #devmgr .dev-install-section,
             #devmgr .dev-command-section,
             #devmgr .dev-log-section,
             #perf .perf-target-section,
@@ -1834,10 +1912,21 @@
                 grid-column: 1 / -1;
             }
 
-            .dev-command-workspace,
-            .dev-device-workspace,
             .update-workspace {
                 grid-template-columns: 1fr;
+            }
+
+            .dev-primary-workspace {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                height: auto;
+            }
+
+            .dev-device-column {
+                height: 620px;
+            }
+
+            .dev-command-section {
+                height: 540px;
             }
 
             .overall-perf-action-bar {
@@ -1866,6 +1955,42 @@
         }
 
         @media (max-width: 760px) {
+            .dev-primary-workspace {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .dev-device-column {
+                height: auto;
+            }
+
+            .dev-device-section {
+                flex: 0 0 auto;
+                min-height: 0;
+            }
+
+            .dev-device-section .table-shell {
+                flex: 0 1 auto;
+                max-height: 200px;
+            }
+
+            #devmgr .dev-install-section {
+                grid-column: 1 / -1;
+                height: 560px;
+            }
+
+            .dev-command-section {
+                height: auto;
+                min-height: 600px;
+            }
+
+            .dev-command-workspace {
+                flex: 1 0 auto;
+            }
+
+            .dev-command-result {
+                flex: 1 0 300px;
+            }
+
             body {
                 padding: 10px;
             }
@@ -2216,6 +2341,63 @@
             justify-content: flex-end;
             padding: 0 22px 22px;
         }
+
+        #lanDialog { padding: 16px; }
+        .lan-dialog {
+            width: min(1000px, 100%);
+            height: min(680px, calc(100dvh - 32px));
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 12px;
+            min-width: 0;
+        }
+        .lan-heading, .lan-footer, .lan-filter, .lan-status-line {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .lan-heading h2 { margin: 0; font-size: 18px; }
+        .lan-close { width: 32px; height: 32px; padding: 0; font-size: 24px; line-height: 1; }
+        .lan-controls {
+            display: grid;
+            grid-template-columns: minmax(180px, 1.6fr) minmax(140px, 1fr) 84px auto;
+            gap: 10px;
+            align-items: end;
+        }
+        .lan-controls .form-group { margin: 0; min-width: 0; }
+        .lan-controls label { margin-bottom: 4px; }
+        .lan-controls input, .lan-controls select { width: 100%; min-width: 0; padding: 8px; }
+        .lan-filter input[type="search"] { flex: 1; min-width: 120px; padding: 8px; border: 1px solid #d1dbeb; border-radius: 4px; font-family: inherit; font-size: 13px; }
+        body.lan-open { overflow: hidden; }
+        .lan-filter label { display: flex; align-items: center; gap: 5px; margin: 0; font-size: 13px; }
+        .lan-dialog input[type="checkbox"] { width: auto; }
+        .lan-table-shell { flex: 1; min-height: 100px; overflow: auto; border: 1px solid var(--border-color, #d1dbeb); border-radius: 4px; }
+        .lan-table { width: 100%; min-width: 650px; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+        .lan-table th, .lan-table td { padding: 9px 8px; text-align: left; border-bottom: 1px solid #e4e9f0; overflow-wrap: anywhere; }
+        .lan-table th { position: sticky; top: 0; background: #f3f6fa; z-index: 1; }
+        .lan-table td small { display: block; color: #65748b; margin-top: 3px; }
+        .lan-table tr:has(input:checked) { background: #edf5ff; }
+        .lan-state-ready { color: #16784d; }
+        .lan-state-error { color: #b32932; }
+        .lan-state-muted { color: #637188; }
+        .lan-status-line { font-size: 13px; min-height: 20px; }
+        .lan-status-line span { overflow-wrap: anywhere; }
+        #lanProgress { width: 100%; height: 6px; accent-color: #218561; flex-shrink: 0; }
+        #lanWarnings { font-size: 12px; color: #98640c; max-height: 48px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+        #lanWarnings:empty { display: none; }
+        .lan-footer { flex-shrink: 0; font-size: 13px; }
+        .lan-footer .btn-group { margin: 0; }
+        @media (max-width: 700px) {
+            #lanDialog { padding: 8px; }
+            .lan-dialog { height: calc(100dvh - 16px); padding: 12px; gap: 8px; }
+            .lan-controls { grid-template-columns: minmax(0, 1fr) 88px; }
+            .lan-controls .lan-network-field { grid-column: 1 / -1; }
+            .lan-controls #lanScanBtn { grid-column: 1 / -1; }
+            .lan-footer { gap: 8px; }
+        }
     </style>
 </head>
 <body>
@@ -2239,23 +2421,26 @@
 
             <!-- 设备管理 -->
             <div id="devmgr" class="tab-content active">
-                <section class="feature-section dev-device-section tone-blue">
+                <div class="dev-primary-workspace">
+                <div class="dev-device-column">
+                <section class="feature-section dev-connect-section tone-blue">
                 <div class="section-header">
                     <span class="section-title">设备连接</span>
-                    <button class="btn btn-secondary" onclick="devRefresh()" style="padding:6px 14px;font-size:13px;">刷新列表</button>
+                    <button class="btn btn-secondary" id="devLANOpenBtn" onclick="devLANOpen()" style="padding:6px 10px;font-size:13px;">局域网发现</button>
                 </div>
 
-                <div class="dev-device-workspace">
-                <div>
                 <div class="adb-connect-area">
                     <input type="text" id="devAdbIp" placeholder="输入设备 IP 地址，如: 10.42.0.165">
                     <button class="btn btn-warning" onclick="devConnect()">连接</button>
                 </div>
                 <div id="devStatus" class="alert alert-info">请连接设备或刷新列表</div>
-                </div>
+                </section>
 
-                <div>
-                <div class="dev-device-subtitle">已连接设备</div>
+                <section class="feature-section dev-device-section tone-slate">
+                <div class="section-header">
+                    <span class="section-title">已连接设备</span>
+                    <button class="btn btn-secondary" onclick="devRefresh()" style="padding:6px 14px;font-size:13px;">刷新列表</button>
+                </div>
 
                 <div class="table-shell">
                     <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -2278,8 +2463,6 @@
                     <button class="btn btn-danger" onclick="devDisconnectSelected()">断开选中设备</button>
                     <button class="btn btn-secondary" onclick="devDisconnectAll()">断开所有设备</button>
                 </div>
-                </div>
-                </div>
                 </section>
 
                 <section class="feature-section dev-record-section tone-cyan">
@@ -2296,12 +2479,13 @@
                     </select>
                 </div>
 
-                <div class="btn-group" style="margin-top:15px;">
+                <div class="btn-group" style="margin-top:8px;">
                     <button class="btn btn-primary" id="devRecordToggleBtn" onclick="devToggleRecording()">开始录屏</button>
                 </div>
 
                 <div class="status-text" id="devRecordStatus"></div>
                 </section>
+                </div>
 
                 <section class="feature-section dev-install-section tone-green">
                 <div class="section-header" style="margin-top:25px;">
@@ -2318,7 +2502,7 @@
                 </div>
 
                 <div class="status-text" id="devInstallStatus"></div>
-                <div class="output-console" id="devOutput"></div>
+                <div class="output-console active" id="devOutput" tabindex="0" aria-label="安装及设备操作日志"></div>
                 </section>
 
                 <section class="feature-section dev-command-section tone-slate">
@@ -2327,7 +2511,7 @@
                 </div>
 
                 <div class="dev-command-workspace">
-                <div>
+                <div class="dev-command-inputs">
                 <div class="alert alert-info" style="font-size:13px;">这里执行的命令只会调用程序目录或当前目录下的 <code>adb/adb.exe</code>，不会读取系统 PATH。可直接输入 <code>adb devices</code>，也可只输入 <code>devices</code>。设备类命令未指定目标时，单设备会自动追加 <code>-s</code>，多设备会对每台设备依次执行。</div>
 
                 <div class="dev-command-fields">
@@ -2375,10 +2559,11 @@
 
                 <div class="dev-command-result">
                 <div class="status-text" id="devCommandStatus"></div>
-                <div class="output-console" id="devCommandOutput"></div>
+                <div class="output-console active" id="devCommandOutput" tabindex="0" aria-label="ADB 命令输出"></div>
                 </div>
                 </div>
                 </section>
+                </div>
 
                 <section class="feature-section dev-log-section tone-amber">
                 <div class="section-header" style="margin-top:25px;">
@@ -3167,6 +3352,56 @@
         </div>
     </div>
 
+    <div class="dialog-overlay" id="lanDialog" aria-hidden="true">
+        <div class="dialog lan-dialog" role="dialog" aria-modal="true" aria-labelledby="lanTitle">
+            <div class="lan-heading">
+                <h2 id="lanTitle">局域网设备</h2>
+                <button class="btn btn-secondary lan-close" type="button" title="关闭" aria-label="关闭局域网发现" onclick="devLANClose()">×</button>
+            </div>
+            <div class="lan-controls">
+                <div class="form-group lan-network-field">
+                    <label for="lanNetwork">本机网卡 / IPv4</label>
+                    <select id="lanNetwork" onchange="devLANNetworkChanged()"></select>
+                </div>
+                <div class="form-group">
+                    <label for="lanCIDR">扫描网段</label>
+                    <input id="lanCIDR" type="text" placeholder="192.168.1.0/24" onchange="devLANInvalidate()">
+                </div>
+                <div class="form-group">
+                    <label for="lanPort">ADB 端口</label>
+                    <input id="lanPort" type="number" min="1" max="65535" value="5555" onchange="devLANInvalidate()">
+                </div>
+                <button class="btn btn-primary" id="lanScanBtn" onclick="devLANScan()">扫描</button>
+            </div>
+            <div class="lan-filter">
+                <input type="search" id="lanFilter" placeholder="筛选 IP / 名称 / MAC" aria-label="筛选发现设备" oninput="devLANRender()">
+                <label><input type="checkbox" id="lanOnlyReady" onchange="devLANRender()">仅可连接</label>
+            </div>
+            <div class="lan-status-line" aria-live="polite">
+                <span id="lanStatus">正在读取本机网卡</span><span id="lanCounts"></span>
+            </div>
+            <progress id="lanProgress" max="1" value="0" aria-label="局域网任务进度"></progress>
+            <div class="lan-table-shell">
+                <table class="lan-table">
+                    <colgroup><col style="width:34px;"><col style="width:150px;"><col style="width:74px;"><col style="width:27%;"><col></colgroup>
+                    <thead><tr>
+                        <th><input type="checkbox" id="lanSelectAll" aria-label="全选可连接设备" onchange="devLANSelectAll(this.checked)"></th>
+                        <th>IP 地址</th><th>端口</th><th>名称 / MAC</th><th>状态</th>
+                    </tr></thead>
+                    <tbody id="lanDeviceRows"><tr><td colspan="5">暂无扫描结果</td></tr></tbody>
+                </table>
+            </div>
+            <div id="lanWarnings" role="status"></div>
+            <div class="lan-footer">
+                <span id="lanSelectedCount">已选 0 台</span>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" id="lanRefreshBtn" onclick="devLANLoadNetworks()">刷新网卡</button>
+                    <button class="btn btn-primary" id="lanConnectBtn" onclick="devLANConnect()" disabled>连接所选设备</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="dialog-overlay" id="appDialog" aria-hidden="true">
         <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogMessage">
             <div class="dialog-header" id="appDialogTitle">提示</div>
@@ -3310,6 +3545,265 @@
         let devRecordingBusy = false;
         const devCommandHistoryKey = 'voiceQa.adbCommandHistory.v1';
         let devCommandHistory = devReadCommandHistory();
+        const devLAN = { visible: false, mode: '', stopping: false, requestID: '', sequence: 0, networks: [], devices: new Map(), selected: new Set(), connections: new Map(), renderTimer: null };
+
+        function devLANRequestID() { return `lan-${Date.now()}-${++devLAN.sequence}`; }
+
+        async function devLANOpen() {
+            if (devLAN.visible) return;
+            devLAN.visible = true;
+            document.body.classList.add('lan-open');
+            const dialog = document.getElementById('lanDialog');
+            dialog.classList.add('active');
+            dialog.setAttribute('aria-hidden', 'false');
+            document.getElementById('lanNetwork').focus();
+            if (!devLAN.mode) await devLANLoadNetworks(true);
+        }
+
+        async function devLANClose() {
+            devLAN.visible = false;
+            document.body.classList.remove('lan-open');
+            const dialog = document.getElementById('lanDialog');
+            dialog.classList.remove('active');
+            dialog.setAttribute('aria-hidden', 'true');
+            document.getElementById('devLANOpenBtn').focus();
+            if (devLAN.mode === 'scan' || devLAN.mode === 'connect') await devLANStop();
+        }
+
+        async function devLANStop() {
+            if (devLAN.stopping) return;
+            const requestID = devLAN.requestID;
+            devLAN.stopping = true;
+            document.getElementById('lanStatus').textContent = '正在停止任务...';
+            devLANSyncControls();
+            try {
+                await window.go.main.App.CancelLANOperation(requestID);
+            } catch (error) {
+                if (requestID === devLAN.requestID) {
+                    devLAN.stopping = false;
+                    document.getElementById('lanStatus').textContent = '停止失败：' + error;
+                    devLANSyncControls();
+                }
+            }
+        }
+
+        async function devLANLoadNetworks(autoScan = false) {
+            if (devLAN.mode) return;
+            devLAN.mode = 'loading';
+            const requestID = devLAN.requestID = devLANRequestID();
+            devLANSyncControls();
+            document.getElementById('lanStatus').textContent = '正在读取本机网卡...';
+            let loaded = false;
+            try {
+                const networks = await window.go.main.App.GetLANNetworks();
+                devLAN.networks = networks || [];
+                const select = document.getElementById('lanNetwork');
+                const previous = select.value;
+                select.replaceChildren();
+                for (const network of devLAN.networks) {
+                    const option = document.createElement('option');
+                    option.value = network.id;
+                    option.textContent = `${network.name} · ${network.ip} (${network.cidr})`;
+                    select.appendChild(option);
+                }
+                if (devLAN.networks.some(network => network.id === previous)) select.value = previous;
+                devLANNetworkChanged();
+                loaded = devLAN.networks.length > 0;
+                document.getElementById('lanStatus').textContent = loaded ? '网卡已就绪' : '未找到已启用的私有 IPv4 网卡';
+            } catch (error) {
+                document.getElementById('lanStatus').textContent = '读取网卡失败：' + error;
+            } finally {
+                if (requestID === devLAN.requestID) {
+                    devLAN.mode = '';
+                    devLANSyncControls();
+                }
+            }
+            if (loaded && autoScan && devLAN.visible) await devLANScan();
+        }
+
+        function devLANNetworkChanged() {
+            const network = devLAN.networks.find(item => item.id === document.getElementById('lanNetwork').value);
+            document.getElementById('lanCIDR').value = network?.scanCIDR || '';
+            devLANInvalidate();
+        }
+
+        function devLANInvalidate() {
+            devLAN.devices.clear();
+            devLAN.selected.clear();
+            devLAN.connections.clear();
+            document.getElementById('lanWarnings').textContent = '';
+            document.getElementById('lanStatus').textContent = '等待扫描';
+            devLANSetProgress(0, 1);
+            devLANRender();
+        }
+
+        function devLANMerge(device) {
+            const previous = devLAN.devices.get(device.ip);
+            if (previous && previous.address !== device.address) devLAN.selected.delete(previous.address);
+            devLAN.devices.set(device.ip, device);
+        }
+
+        function devLANSetProgress(done, total) {
+            const progress = document.getElementById('lanProgress');
+            progress.max = Math.max(1, Number(total) || 0);
+            progress.value = Math.min(progress.max, Math.max(0, Number(done) || 0));
+        }
+
+        async function devLANScan() {
+            if (devLAN.mode === 'scan') return devLANStop();
+            if (devLAN.mode) return;
+            const options = { networkID: document.getElementById('lanNetwork').value, cidr: document.getElementById('lanCIDR').value.trim(), port: Number(document.getElementById('lanPort').value) };
+            if (!options.networkID || !options.cidr || !Number.isInteger(options.port) || options.port < 1 || options.port > 65535) {
+                document.getElementById('lanStatus').textContent = '请选择网卡、填写网段和有效端口';
+                return;
+            }
+            devLANInvalidate();
+            devLAN.mode = 'scan';
+            devLAN.stopping = false;
+            const requestID = devLAN.requestID = devLANRequestID();
+            document.getElementById('lanStatus').textContent = '正在发现局域网设备...';
+            devLANSyncControls();
+            try {
+                const result = await window.go.main.App.ScanLANDevices(requestID, options);
+                if (requestID !== devLAN.requestID) return;
+                (result.devices || []).forEach(devLANMerge);
+                devLANSetProgress(result.scanned, result.total);
+                document.getElementById('lanStatus').textContent = result.message || '扫描结束';
+                const warnings = [...(result.warnings || [])];
+                warnings.push('发现结果不等于路由器全部终端；邻居记录可能已过期，访客隔离或设备休眠可能导致遗漏。');
+                document.getElementById('lanWarnings').textContent = warnings.join('\n');
+            } catch (error) {
+                document.getElementById('lanStatus').textContent = '扫描失败：' + error;
+            } finally {
+                if (requestID === devLAN.requestID) {
+                    devLAN.mode = '';
+                    devLAN.stopping = false;
+                    devLANRender();
+                }
+            }
+        }
+
+        function devLANVisibleDevices() {
+            const keyword = document.getElementById('lanFilter').value.trim().toLowerCase();
+            const onlyReady = document.getElementById('lanOnlyReady').checked;
+            return [...devLAN.devices.values()].filter(device => (!onlyReady || device.canConnect) && `${device.ip} ${device.name || ''} ${device.mac || ''}`.toLowerCase().includes(keyword))
+                .sort((a, b) => a.ip.localeCompare(b.ip, undefined, {numeric: true}));
+        }
+
+        function devLANSelectable(device) {
+            return device.canConnect && device.address && !globalDevices.includes(device.address) && !devLAN.connections.get(device.address)?.success;
+        }
+
+        function devLANSelect(address, checked) {
+            if (devLAN.mode === 'connect') return;
+            if (checked) devLAN.selected.add(address); else devLAN.selected.delete(address);
+            devLANSyncControls();
+        }
+
+        function devLANSelectAll(checked) {
+            if (devLAN.mode === 'connect') return;
+            devLANVisibleDevices().filter(devLANSelectable).forEach(device => {
+                if (checked) devLAN.selected.add(device.address); else devLAN.selected.delete(device.address);
+            });
+            devLANRender();
+        }
+
+        function devLANSyncControls() {
+            const busy = !!devLAN.mode;
+            ['lanNetwork', 'lanCIDR', 'lanPort', 'lanRefreshBtn'].forEach(id => document.getElementById(id).disabled = busy);
+            const scan = document.getElementById('lanScanBtn');
+            scan.textContent = devLAN.mode === 'scan' ? (devLAN.stopping ? '正在停止...' : '停止扫描') : '扫描';
+            scan.disabled = devLAN.stopping || (busy && devLAN.mode !== 'scan') || !devLAN.networks.length;
+            const connect = document.getElementById('lanConnectBtn');
+            connect.textContent = devLAN.mode === 'connect' ? (devLAN.stopping ? '正在停止...' : '停止连接') : '连接所选设备';
+            connect.disabled = devLAN.stopping || (devLAN.mode !== 'connect' && (busy || devLAN.selected.size === 0));
+            const selectable = devLANVisibleDevices().filter(devLANSelectable);
+            const checked = selectable.filter(device => devLAN.selected.has(device.address)).length;
+            const selectAll = document.getElementById('lanSelectAll');
+            selectAll.checked = selectable.length > 0 && checked === selectable.length;
+            selectAll.indeterminate = checked > 0 && checked < selectable.length;
+            selectAll.disabled = devLAN.mode === 'connect' || selectable.length === 0;
+            document.getElementById('lanSelectedCount').textContent = `已选 ${devLAN.selected.size} 台`;
+            const ready = [...devLAN.devices.values()].filter(device => device.canConnect).length;
+            document.getElementById('lanCounts').textContent = `发现 ${devLAN.devices.size} 台 · 可尝试连接 ${ready} 台`;
+        }
+
+        function devLANRender() {
+            if (devLAN.renderTimer) { clearTimeout(devLAN.renderTimer); devLAN.renderTimer = null; }
+            const rows = document.getElementById('lanDeviceRows');
+            rows.replaceChildren();
+            const visible = devLANVisibleDevices();
+            const states = {neighbor: '邻居记录，未检测到 ADB', reachable: '设备有响应，ADB 端口未开放', pairing: '无线调试需先配对', advertised: '无线调试服务，可能需先配对', 'port-open': '端口开放，可尝试 ADB 连接'};
+            for (const device of visible) {
+                const row = document.createElement('tr');
+                const checkCell = document.createElement('td');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.setAttribute('aria-label', `选择 ${device.ip}`);
+                checkbox.disabled = devLAN.mode === 'connect' || !devLANSelectable(device);
+                checkbox.checked = devLAN.selected.has(device.address);
+                checkbox.addEventListener('change', () => devLANSelect(device.address, checkbox.checked));
+                checkCell.appendChild(checkbox);
+                row.appendChild(checkCell);
+                for (const text of [device.ip, device.port ? String(device.port) : '-', device.name || '-']) {
+                    const cell = document.createElement('td'); cell.textContent = text; row.appendChild(cell);
+                }
+                const mac = document.createElement('small'); mac.textContent = device.mac || 'MAC 未知'; row.lastChild.appendChild(mac);
+                const state = document.createElement('td');
+                const connection = devLAN.connections.get(device.address);
+                const connected = connection?.success || globalDevices.includes(device.address);
+                state.textContent = connected ? '已连接' : connection ? connection.message : states[device.state] || '已发现';
+                state.className = connected ? 'lan-state-ready' : connection && !connection.success ? 'lan-state-error' : 'lan-state-muted';
+                if (devLAN.mode === 'connect' && devLAN.selected.has(device.address) && !connection) state.textContent = '等待连接结果...';
+                const source = document.createElement('small'); source.textContent = (device.sources || []).join(' + '); state.appendChild(source);
+                row.appendChild(state);
+                rows.appendChild(row);
+            }
+            if (!visible.length) rows.innerHTML = '<tr><td colspan="5">' + (devLAN.mode === 'scan' ? '正在发现设备...' : '没有匹配的发现结果') + '</td></tr>';
+            devLANSyncControls();
+        }
+
+        function devLANConnectItem(item) {
+            devLAN.connections.set(item.address, item);
+            if (item.success) devLAN.selected.delete(item.address);
+            devAppendOutput(`${item.address}: ${item.message}`, item.success ? 'success' : 'error');
+            devLANSetProgress(devLAN.connections.size, devLAN.connectTotal);
+            document.getElementById('lanStatus').textContent = `正在连接：已处理 ${devLAN.connections.size}/${devLAN.connectTotal} 台`;
+            devLANRender();
+        }
+
+        async function devLANConnect() {
+            if (devLAN.mode === 'connect') return devLANStop();
+            if (devLAN.mode) return;
+            const targets = [...devLAN.devices.values()].filter(device => devLAN.selected.has(device.address) && devLANSelectable(device)).map(device => device.address);
+            if (!targets.length || targets.length > 64) { document.getElementById('lanStatus').textContent = '请选择 1 到 64 台可连接设备'; return; }
+            devLAN.mode = 'connect';
+            devLAN.stopping = false;
+            devLAN.connections.clear();
+            devLAN.connectTotal = targets.length;
+            const requestID = devLAN.requestID = devLANRequestID();
+            document.getElementById('lanStatus').textContent = `正在连接 ${targets.length} 台设备...`;
+            devLANSetProgress(0, targets.length);
+            devLANRender();
+            try {
+                const result = await window.go.main.App.ConnectLANDevices(requestID, targets);
+                if (requestID !== devLAN.requestID) return;
+                (result.items || []).forEach(item => { if (!devLAN.connections.has(item.address)) devLANConnectItem(item); });
+                document.getElementById('lanStatus').textContent = result.message || '连接结束';
+                await devRefresh();
+                const connected = new Set((result.items || []).filter(item => item.success).map(item => item.address));
+                document.querySelectorAll('.dev-check').forEach(checkbox => { if (connected.has(checkbox.value)) checkbox.checked = true; });
+                devSyncDeviceSelection();
+            } catch (error) {
+                document.getElementById('lanStatus').textContent = '批量连接失败：' + error;
+            } finally {
+                if (requestID === devLAN.requestID) {
+                    devLAN.mode = '';
+                    devLAN.stopping = false;
+                    devLANRender();
+                }
+            }
+        }
 
         // 连接设备
         async function devConnect() {
@@ -3368,7 +3862,9 @@
         function devRenderList() {
             const tbody = document.getElementById('devListBody');
             const selectAll = document.getElementById('devSelectAll');
+            const selected = new Set(devGetSelected());
             selectAll.checked = false;
+            selectAll.indeterminate = false;
             if (globalDevices.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="3" style="padding:15px;text-align:center;color:#999;">暂无已连接设备</td></tr>';
                 return;
@@ -3384,6 +3880,8 @@
                 checkbox.type = 'checkbox';
                 checkbox.className = 'dev-check';
                 checkbox.value = serial;
+                checkbox.checked = selected.has(serial);
+                checkbox.addEventListener('change', devSyncDeviceSelection);
                 checkbox.style.width = 'auto';
                 checkCell.appendChild(checkbox);
 
@@ -3407,12 +3905,21 @@
                 row.append(checkCell, serialCell, actionCell);
                 tbody.appendChild(row);
             });
+            devSyncDeviceSelection();
+        }
+
+        function devSyncDeviceSelection() {
+            const count = devGetSelected().length;
+            const all = document.getElementById('devSelectAll');
+            all.checked = globalDevices.length > 0 && count === globalDevices.length;
+            all.indeterminate = count > 0 && count < globalDevices.length;
         }
 
         // 全选/取消全选
         function devToggleAll() {
             const checked = document.getElementById('devSelectAll').checked;
             document.querySelectorAll('.dev-check').forEach(cb => cb.checked = checked);
+            devSyncDeviceSelection();
         }
 
         // 获取选中的设备列表
@@ -3631,7 +4138,7 @@
                 button.textContent = '安装到唯一设备';
                 return;
             }
-            hint.textContent = `当前有 ${globalDevices.length} 台设备，请在上方列表勾选一个或多个安装目标。`;
+            hint.textContent = `当前有 ${globalDevices.length} 台设备，请在“已连接设备”中勾选一个或多个安装目标。`;
             button.textContent = '安装到选中设备';
         }
 
@@ -6329,11 +6836,22 @@
 
         // 初始化事件监听
         function initEventListeners() {
+            window.runtime.EventsOn('lan-scan-progress', (data) => {
+                if (data.requestID !== devLAN.requestID || devLAN.mode !== 'scan') return;
+                const progress = data.progress;
+                if (progress.device) devLANMerge(progress.device);
+                devLANSetProgress(progress.scanned, progress.total);
+                if (!devLAN.stopping) document.getElementById('lanStatus').textContent = `正在扫描 ${progress.scanned}/${progress.total} 个地址`;
+                if (!devLAN.renderTimer) devLAN.renderTimer = setTimeout(devLANRender, 120);
+            });
+            window.runtime.EventsOn('lan-connect-progress', (data) => {
+                if (data.requestID === devLAN.requestID && devLAN.mode === 'connect') devLANConnectItem(data.item);
+            });
             window.runtime.EventsOn('apk-install-progress', (data) => {
                 const active = devInstallActive;
                 if (!devInstallBusy || !active || data.serial !== active.serial || data.apkFile !== active.apkFile) return;
                 document.getElementById('devInstallStatus').textContent = `${data.serial}: ${data.message} (${active.index}/${active.total})`;
-                devAppendOutput(`${data.serial}: ${data.apkFile} - ${data.message}`, 'info');
+                devAppendOutput(`${data.serial}: ${data.message}`, 'info');
             });
             window.runtime.EventsOn('generate-output', (data) => {
                 const statusText = document.getElementById('statusText');
@@ -6859,6 +7377,14 @@
             document.addEventListener('keydown', (event) => {
                 if (event.key === 'Escape' && document.getElementById('appDialog').classList.contains('active')) {
                     closeAppDialog();
+                } else if (devLAN.visible) {
+                    if (event.key === 'Escape') { event.preventDefault(); devLANClose(); }
+                    if (event.key === 'Tab') {
+                        const focusable = [...document.querySelectorAll('#lanDialog button:not(:disabled), #lanDialog input:not(:disabled), #lanDialog select:not(:disabled)')];
+                        const first = focusable[0], last = focusable[focusable.length - 1];
+                        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+                    }
                 }
             });
         });

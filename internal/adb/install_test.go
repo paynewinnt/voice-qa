@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -16,34 +17,41 @@ type installFake struct {
 	t                      *testing.T
 	states                 []string
 	calls                  []string
-	dir, remote            string
-	pushFailures           int
+	dir                    string
 	installOutput          string
 	installErr, cleanupErr error
-	cancelPush             context.CancelFunc
+	cancelInstall          context.CancelFunc
 }
 
 func (f *installFake) run(ctx context.Context, dir string, args ...string) (string, error) {
 	f.t.Helper()
 	deadline, ok := ctx.Deadline()
-	if !ok || time.Until(deadline) > apkTransferTimeout {
-		f.t.Fatal("ADB call lacks a bounded deadline")
+	if !ok || time.Until(deadline) > apkInstallTimeout {
+		f.t.Error("ADB call lacks a bounded deadline")
+		return "", errors.New("unbounded ADB command")
 	}
 	joined := strings.Join(args, " ")
-	for _, forbidden := range []string{"uninstall", "kill-server", "pm clear", "'clear'", "'install' '-d'"} {
+	for _, forbidden := range []string{"uninstall", "kill-server", "pm clear", "'clear'", "'install' '-d'", "push", "--no-streaming", "sha256sum", "'pm' 'install'"} {
 		if strings.Contains(joined, forbidden) {
-			f.t.Fatalf("destructive command: %s", joined)
+			f.t.Errorf("forbidden command: %s", joined)
+			return "", errors.New("forbidden command")
 		}
+	}
+	if len(args) == 0 {
+		f.t.Error("empty ADB command")
+		return "", errors.New("empty command")
 	}
 	if args[0] == "disconnect" || args[0] == "connect" {
 		if len(args) != 2 || args[1] != "192.0.2.1:5555" {
-			f.t.Fatalf("wrong reconnect target: %q", args)
+			f.t.Errorf("wrong reconnect target: %q", args)
+			return "", errors.New("wrong target")
 		}
 		f.calls = append(f.calls, args[0])
 		return "connected", nil
 	}
 	if len(args) < 3 || args[0] != "-s" {
-		f.t.Fatalf("missing explicit target: %q", args)
+		f.t.Errorf("missing explicit target: %q", args)
+		return "", errors.New("missing target")
 	}
 	switch args[2] {
 	case "get-state":
@@ -60,42 +68,34 @@ func (f *installFake) run(ctx context.Context, dir string, args ...string) (stri
 	case "wait-for-device":
 		f.calls = append(f.calls, "wait")
 		return "", nil
-	case "push":
-		f.calls = append(f.calls, "push")
-		if len(args) != 5 || args[3] != "package.apk" {
-			f.t.Fatalf("APK source path not isolated: %q", args)
+	case "install":
+		f.calls = append(f.calls, "install")
+		if !reflect.DeepEqual(args[3:], []string{"--streaming", "--no-incremental", "-r", "package.apk"}) {
+			f.t.Errorf("install mode not forced to streaming: %q", args)
+			return "", errors.New("unexpected install arguments")
 		}
-		f.dir, f.remote = dir, args[4]
-		if !strings.HasPrefix(f.remote, "/data/local/tmp/voice-qa-apk-") || !strings.HasSuffix(f.remote, ".apk") {
-			f.t.Fatalf("unsafe remote staging path: %s", f.remote)
-		}
-		content, err := os.ReadFile(filepath.Join(dir, args[3]))
+		f.dir = dir
+		content, err := os.ReadFile(filepath.Join(dir, "package.apk"))
 		if err != nil || string(content) != "apk fixture" {
-			f.t.Fatalf("bad staged APK: %s %v", content, err)
+			f.t.Errorf("bad local APK copy: %s %v", content, err)
+			return "", errors.New("invalid local copy")
 		}
-		if f.cancelPush != nil {
-			f.cancelPush()
+		if f.cancelInstall != nil {
+			f.cancelInstall()
 			return "", context.Canceled
 		}
-		if f.pushFailures > 0 {
-			f.pushFailures--
-			return "adb: device offline", errors.New("exit status 1")
-		}
-		return "1 file pushed", nil
+		return f.installOutput, f.installErr
 	case "shell":
-		if reflect.DeepEqual(args[2:], ShellArgs("pm", "install", "-r", f.remote)) {
-			f.calls = append(f.calls, "install")
-			return f.installOutput, f.installErr
-		}
-		if reflect.DeepEqual(args[2:], ShellArgs("rm", "-f", f.remote)) {
+		if reflect.DeepEqual(args[2:], ShellArgs("rm", "-f", legacyAPKCache)) {
 			f.calls = append(f.calls, "cleanup")
 			if ctx.Err() != nil {
-				f.t.Fatal("cleanup inherited canceled context")
+				f.t.Error("cleanup inherited canceled context")
+				return "", ctx.Err()
 			}
 			return "", f.cleanupErr
 		}
 	}
-	f.t.Fatalf("unexpected command: %q", args)
+	f.t.Errorf("unexpected command: %q", args)
 	return "", errors.New("unexpected command")
 }
 
@@ -121,15 +121,15 @@ func assertInstallCalls(t *testing.T, f *installFake, want []string) {
 }
 
 func TestInstallAPKReplacesSameVersionWithoutUninstall(t *testing.T) {
-	f := &installFake{t: t, installOutput: "Success\r\n"}
+	f := &installFake{t: t, installOutput: "Performing Streamed Install\r\nSuccess\r\n"}
 	source := installFixture(t)
 	var stages []string
 	message, err := installAPK(context.Background(), "192.0.2.1:5555", source, func(s string) { stages = append(stages, s) }, f.run)
-	if err != nil || !strings.Contains(message, "保留数据") {
+	if err != nil || !strings.Contains(message, "保留应用数据") {
 		t.Fatalf("install: %s %v", message, err)
 	}
-	assertInstallCalls(t, f, []string{"state", "push", "install", "cleanup"})
-	if len(stages) != 4 {
+	assertInstallCalls(t, f, []string{"state", "cleanup", "install"})
+	if len(stages) < 4 || !strings.Contains(strings.Join(stages, "\n"), "--streaming --no-incremental -r") {
 		t.Fatalf("missing phase progress: %v", stages)
 	}
 	if data, err := os.ReadFile(source); err != nil || string(data) != "apk fixture" {
@@ -143,7 +143,7 @@ func TestInstallAPKReconnectsOnlyOfflineNetworkTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertInstallCalls(t, f, []string{"state", "disconnect", "connect", "state", "wait", "state", "push", "install", "cleanup"})
+	assertInstallCalls(t, f, []string{"state", "disconnect", "connect", "state", "wait", "state", "cleanup", "install"})
 }
 
 func TestInstallAPKDoesNotReconnectUnauthorizedOrUSBDevice(t *testing.T) {
@@ -162,20 +162,14 @@ func TestInstallAPKDoesNotReconnectUnauthorizedOrUSBDevice(t *testing.T) {
 	}
 }
 
-func TestInstallAPKRetriesInterruptedTransferOnce(t *testing.T) {
-	for _, failures := range []int{1, 2} {
-		f := &installFake{t: t, pushFailures: failures, installOutput: "Success"}
+func TestInstallAPKUnsupportedStreamingDoesNotFallBack(t *testing.T) {
+	for _, output := range []string{"adb: Attempting to use streaming install on unsupported device", "adb: unknown option --streaming", "Unknown option: --no-incremental"} {
+		f := &installFake{t: t, installErr: errors.New("exit status 1"), installOutput: output}
 		_, err := installAPK(context.Background(), "192.0.2.1:5555", installFixture(t), nil, f.run)
-		want := []string{"state", "push", "state", "push"}
-		if failures == 1 {
-			want = append(want, "install")
-			if err != nil {
-				t.Fatal(err)
-			}
-		} else if err == nil {
-			t.Fatal("second transfer failure accepted")
+		if err == nil || !strings.Contains(err.Error(), "未回退") || !strings.Contains(err.Error(), output) {
+			t.Fatalf("lost unsupported-streaming diagnosis: %v", err)
 		}
-		assertInstallCalls(t, f, append(want, "cleanup"))
+		assertInstallCalls(t, f, []string{"state", "cleanup", "install"})
 	}
 }
 
@@ -196,7 +190,7 @@ func TestInstallAPKPreservesPackageManagerDiagnostics(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tc.hint) || !strings.Contains(err.Error(), tc.output) {
 				t.Fatalf("lost diagnosis: %v", err)
 			}
-			assertInstallCalls(t, f, []string{"state", "push", "install", "cleanup"})
+			assertInstallCalls(t, f, []string{"state", "cleanup", "install"})
 		})
 	}
 }
@@ -208,19 +202,19 @@ func TestInstallAPKDoesNotRetryUncertainInstall(t *testing.T) {
 		if got == nil || !strings.Contains(got.Error(), "结果尚不确定") {
 			t.Fatalf("uncertain install: %v", got)
 		}
-		assertInstallCalls(t, f, []string{"state", "push", "install", "cleanup"})
+		assertInstallCalls(t, f, []string{"state", "cleanup", "install"})
 	}
 }
 
-func TestInstallAPKCancellationStillCleansStagingFile(t *testing.T) {
+func TestInstallAPKCancellationStillCleansLocalCopy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	f := &installFake{t: t, cancelPush: cancel}
+	f := &installFake{t: t, cancelInstall: cancel}
 	_, err := installAPK(ctx, "192.0.2.1:5555", installFixture(t), nil, f.run)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
-	assertInstallCalls(t, f, []string{"state", "push", "cleanup"})
+	assertInstallCalls(t, f, []string{"state", "cleanup", "install"})
 }
 
 func TestInstallAPKCleanupFailureDoesNotHideSuccessfulInstall(t *testing.T) {
@@ -228,6 +222,111 @@ func TestInstallAPKCleanupFailureDoesNotHideSuccessfulInstall(t *testing.T) {
 	message, err := installAPK(context.Background(), "192.0.2.1:5555", installFixture(t), nil, f.run)
 	if err != nil || !strings.Contains(message, "安装成功") || !strings.Contains(message, "清理失败") {
 		t.Fatalf("cleanup status: %s %v", message, err)
+	}
+	assertInstallCalls(t, f, []string{"state", "cleanup", "install"})
+}
+
+func TestInstallAPKCleanupFailurePreservesInstallError(t *testing.T) {
+	installErr := errors.New("install rejected")
+	f := &installFake{t: t, installErr: installErr, installOutput: "Failure [INSTALL_FAILED_USER_RESTRICTED]", cleanupErr: errors.New("offline")}
+	_, err := installAPK(context.Background(), "192.0.2.1:5555", installFixture(t), nil, f.run)
+	if !errors.Is(err, installErr) || !strings.Contains(err.Error(), "清理失败") || !strings.Contains(err.Error(), "安装授权") {
+		t.Fatalf("lost original error or cleanup warning: %v", err)
+	}
+	assertInstallCalls(t, f, []string{"state", "cleanup", "install"})
+}
+
+func TestInstallAPKCanceledBeforeStartDoesNotTouchDevice(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	f := &installFake{t: t}
+	_, err := installAPK(ctx, "192.0.2.1:5555", installFixture(t), nil, f.run)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation: %v", err)
+	}
+	assertInstallCalls(t, f, nil)
+}
+
+func TestInstallAPKDoesNotAcceptSuccessOnNonzeroExit(t *testing.T) {
+	f := &installFake{t: t, installOutput: "Success", installErr: errors.New("exit status 1")}
+	if _, err := installAPK(context.Background(), "192.0.2.1:5555", installFixture(t), nil, f.run); err == nil {
+		t.Fatal("accepted Success with a failed command")
+	}
+	assertInstallCalls(t, f, []string{"state", "cleanup", "install"})
+}
+
+func TestInstallAPKLocalCopyRejectsInvalidFiles(t *testing.T) {
+	empty := filepath.Join(t.TempDir(), "empty.apk")
+	if err := os.WriteFile(empty, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{empty, filepath.Dir(empty), empty + ".missing"} {
+		f := &installFake{t: t}
+		if _, err := installAPK(context.Background(), "192.0.2.1:5555", source, nil, f.run); err == nil {
+			t.Fatal("invalid APK accepted")
+		}
+		assertInstallCalls(t, f, []string{"state"})
+	}
+}
+
+func TestStreamedInstallShowsElapsedTimeWithoutFakePercent(t *testing.T) {
+	release := make(chan struct{})
+	var once sync.Once
+	var messages []string
+	runner := func(ctx context.Context, dir string, args ...string) (string, error) {
+		select {
+		case <-release:
+			return "Performing Streamed Install\nSuccess", nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	output, err := streamInstallAPK(ctx, "device", "", func(message string) {
+		messages = append(messages, message)
+		once.Do(func() { close(release) })
+	}, runner, 5*time.Millisecond)
+	if err != nil || !apkInstallSucceeded(output) || len(messages) == 0 {
+		t.Fatalf("progress: %v %v", messages, err)
+	}
+	for _, message := range messages {
+		if !strings.Contains(message, "已耗时") || strings.Contains(message, "%") || strings.Contains(message, "MiB/s") {
+			t.Fatal(message)
+		}
+	}
+}
+
+func TestStreamedInstallDeadlineWaitsForCommandExit(t *testing.T) {
+	stopped := make(chan struct{})
+	runner := func(ctx context.Context, dir string, args ...string) (string, error) {
+		<-ctx.Done()
+		close(stopped)
+		return "Performing Streamed Install", ctx.Err()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := streamInstallAPK(ctx, "device", "", func(string) {}, runner, time.Second)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	select {
+	case <-stopped:
+	default:
+		t.Fatal("install command still running")
+	}
+}
+
+func TestStreamedInstallKeepsConfirmedSuccessAtCancellationBoundary(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runner := func(context.Context, string, ...string) (string, error) {
+		cancel()
+		return "Success", nil
+	}
+	output, err := streamInstallAPK(ctx, "device", "", func(string) {}, runner, time.Second)
+	if err != nil || !apkInstallSucceeded(output) {
+		t.Fatalf("confirmed success became failure: %q %v", output, err)
 	}
 }
 

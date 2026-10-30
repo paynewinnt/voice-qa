@@ -86,6 +86,11 @@ type App struct {
 	overallPerfCancel     context.CancelFunc
 	manifestScanMu        sync.Mutex
 	manifestScanCache     map[string]packageManifestScan
+	lanMu                 sync.Mutex
+	lanRequestID          string
+	lanCanceledRequestID  string
+	lanCancel             context.CancelFunc
+	lanCandidates         map[string]bool
 }
 
 // NewApp 创建新的 App 实例
@@ -110,6 +115,7 @@ func (a *App) startup(ctx context.Context) {
 
 // shutdown 在应用关闭时清理后台任务和播放资源
 func (a *App) shutdown(ctx context.Context) {
+	a.cancelLANOperation("")
 	a.cmdMu.Lock()
 	genCancel := generateCancel
 	playCancel := playCancel
@@ -1169,7 +1175,11 @@ type AdbResult struct {
 
 // ConnectAdb 连接 ADB 设备
 func (a *App) ConnectAdb(ip string) AdbResult {
-	result, err := adb.Connect(ip)
+	parent := a.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	result, err := adb.ConnectContext(parent, ip)
 	if err != nil {
 		return AdbResult{Success: false, Message: err.Error()}
 	}
@@ -1249,7 +1259,7 @@ func (a *App) InstallApk(serial, apkPath string) InstallApkResult {
 	if parent == nil {
 		parent = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(parent, 15*time.Minute)
+	ctx, cancel := context.WithTimeout(parent, 40*time.Minute)
 	defer cancel()
 	message, err := adb.InstallAPK(ctx, resolvedSerial, apkPath, func(message string) {
 		if a.ctx != nil {
@@ -2655,10 +2665,20 @@ func (a *App) legacyStopPlay() error {
 
 // GetConnectedDevices 获取已连接的 ADB 设备列表
 func (a *App) GetConnectedDevices() ([]string, error) {
-	cmd := adb.Command("devices")
+	parent := a.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	cmd := adb.CommandContext(ctx, "devices")
+	cmd.WaitDelay = time.Second
 	hideConsoleWindow(cmd)
 	output, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
 		return nil, fmt.Errorf("执行 adb devices 失败: %w", err)
 	}
 
