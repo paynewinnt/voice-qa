@@ -141,3 +141,80 @@ test('APK install errors restore controls', async () => {
     assert.equal(app.element('devInstallBtn').disabled, false);
     assert.equal(app.element('devInstallStatus').textContent, '安装完成：0/1 成功');
 });
+
+test('screenshot locks duplicate clicks and displays its saved path without changing recording status', async () => {
+    const app = loadApp();
+    const calls = [];
+    let complete;
+    app.window.go.main.App.CaptureDeviceScreenshot = serial => {
+        calls.push(serial);
+        return new Promise(resolve => { complete = resolve; });
+    };
+    app.element('devRecordDevice').value = 'device-a';
+    app.element('devRecordStatus').textContent = '录屏已保存';
+    const capture = app.run('devTakeScreenshot()');
+    await app.run('devTakeScreenshot()');
+    assert.deepEqual(calls, ['device-a']);
+    assert.equal(app.element('devScreenshotBtn').disabled, true);
+    assert.equal(app.element('devRecordDevice').disabled, true);
+    app.run('globalDevices = ["device-b"]; devSyncRecordDeviceSelect();');
+    assert.equal(app.element('devRecordDevice').value, 'device-a');
+    complete({ success: true, clipboardCopied: true, serial: 'device-a', path: 'D:/中文输出/screenshot-1.png', message: '截图已保存并复制：D:/中文输出/screenshot-1.png' });
+    await capture;
+    assert.equal(app.element('devScreenshotStatus').textContent, '截图已保存并复制：D:/中文输出/screenshot-1.png');
+    assert.equal(app.element('devRecordStatus').textContent, '录屏已保存');
+    assert.equal(app.element('devScreenshotBtn').disabled, false);
+    assert.equal(app.element('devRecordDevice').disabled, false);
+    assert.equal(app.run('devScreenshotBusy'), false);
+});
+
+test('screenshot remains available during recording and preserves the recording target', async () => {
+    const app = loadApp();
+    const calls = [];
+    app.window.go.main.App.CaptureDeviceScreenshot = async serial => {
+        calls.push(serial);
+        return { success: true, clipboardCopied: true, path: 'output/screenshot.png', message: '截图已保存并复制：output/screenshot.png' };
+    };
+    app.run('devRecording = true; devRecordingSerial = "recording-device";');
+    app.element('devRecordDevice').value = 'other-device';
+    app.element('devRecordStatus').textContent = '录屏中';
+    await app.run('devTakeScreenshot()');
+    assert.deepEqual(calls, ['recording-device']);
+    assert.equal(app.run('devRecording'), true);
+    assert.equal(app.element('devRecordToggleBtn').textContent, '停止录屏并保存');
+    assert.equal(app.element('devRecordStatus').textContent, '录屏中');
+    assert.equal(app.element('devRecordDevice').disabled, true);
+    assert.equal(app.element('devScreenshotBtn').disabled, false);
+    app.run('devRecordingBusy = true; devRenderRecordingControl();');
+    await app.run('devTakeScreenshot()');
+    assert.equal(calls.length, 1);
+    assert.equal(app.element('devScreenshotBtn').disabled, true);
+});
+
+test('screenshot errors restore controls and show the original error safely', async () => {
+    for (const throws of [false, true]) {
+        const app = loadApp();
+        app.window.go.main.App.CaptureDeviceScreenshot = async () => {
+            if (throws) throw Error('device offline');
+            return { success: false, message: '<device> offline' };
+        };
+        await app.run('devTakeScreenshot()');
+        assert.match(app.element('devScreenshotStatus').textContent, /截图失败：.*offline/);
+        assert.equal(app.element('devScreenshotStatus').innerHTML, '');
+        assert.equal(app.element('devScreenshotBtn').disabled, false);
+        assert.equal(app.run('devScreenshotBusy'), false);
+    }
+});
+
+test('clipboard failure is distinct from screenshot failure and keeps the saved path', async () => {
+    const app = loadApp();
+    app.window.go.main.App.CaptureDeviceScreenshot = async () => ({
+        success: true, clipboardCopied: false, path: 'output/screenshot.png',
+        message: '截图已保存，复制失败：clipboard busy；output/screenshot.png'
+    });
+    await app.run('devTakeScreenshot()');
+    assert.match(app.element('devScreenshotStatus').textContent, /截图已保存，复制失败/);
+    assert.match(app.element('devScreenshotStatus').textContent, /output\/screenshot\.png/);
+    assert.doesNotMatch(app.element('devScreenshotStatus').textContent, /截图失败/);
+    assert.equal(app.element('devScreenshotBtn').disabled, false);
+});

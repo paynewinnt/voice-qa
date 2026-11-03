@@ -79,6 +79,7 @@ type App struct {
 	manualRecordPath      string
 	manualRecordSerial    string
 	manualRecordStartedAt time.Time
+	screenshotCancel      context.CancelFunc
 	cmdMu                 sync.Mutex // 保护 generateCmd 和 playCmd 的互斥锁
 	updateMu              sync.Mutex
 	downloadedUpdatePath  string
@@ -122,6 +123,7 @@ func (a *App) shutdown(ctx context.Context) {
 	perfSession := a.perfSession
 	perfLogcat := a.perfLogcat
 	manualRecorder := a.manualRecorder
+	screenshotCancel := a.screenshotCancel
 	if a.perfTimer != nil {
 		a.perfTimer.Stop()
 		a.perfTimer = nil
@@ -143,6 +145,9 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	if playCancel != nil {
 		playCancel()
+	}
+	if screenshotCancel != nil {
+		screenshotCancel()
 	}
 	if perfSession != nil {
 		_, _ = perfSession.StopAndPull()

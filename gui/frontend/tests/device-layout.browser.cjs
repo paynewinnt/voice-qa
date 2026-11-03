@@ -35,6 +35,7 @@ test('device workspace keeps installation and command logs readable', { timeout:
                 CheckUpdate: async () => ({ success: true, hasUpdate: false }),
                 StartManualScreenRecording: async () => ({ success: true, serial: devices[0], message: 'Recording started' }),
                 StopManualScreenRecording: async () => ({ success: true, message: 'Recording saved' }),
+                CaptureDeviceScreenshot: async serial => ({ success: true, clipboardCopied: true, serial, path: 'D:/测试输出/screenshot-20261103-120000-12345.png', message: '截图已保存并复制：D:/测试输出/screenshot-20261103-120000-12345.png' }),
                 RunAdbCommand: async (serial, command) => ({ success: true, command, message: 'Command completed', output: 'versionName=2.4.34' })
             } } };
             window.runtime = { EventsOn() {} };
@@ -71,7 +72,8 @@ test('device workspace keeps installation and command logs readable', { timeout:
                     viewport: innerWidth, pageWidth: document.documentElement.scrollWidth,
                     workspace: rect('.dev-primary-workspace'), left: rect('.dev-device-column'),
                     install: rect('.dev-install-section'), command: rect('.dev-command-section'),
-                    logcat: rect('.dev-log-section'), installLog: rect('#devOutput'), commandLog: rect('#devCommandOutput')
+                    logcat: rect('.dev-log-section'), installLog: rect('#devOutput'), commandLog: rect('#devCommandOutput'),
+                    recordButton: rect('#devRecordToggleBtn'), screenshotButton: rect('#devScreenshotBtn')
                 };
             });
             assert(layout.pageWidth <= width, `page overflow at ${width}: ${layout.pageWidth}`);
@@ -80,6 +82,9 @@ test('device workspace keeps installation and command logs readable', { timeout:
             assert(layout.installLog.bottom < layout.install.bottom, `APK log escapes panel at ${width}`);
             assert(layout.commandLog.bottom < layout.command.bottom, `command log escapes panel at ${width}`);
             assert(layout.logcat.y >= layout.workspace.bottom, `logcat overlaps workspace at ${width}`);
+            assert(Math.abs(layout.recordButton.y - layout.screenshotButton.y) < 1, `screenshot is not beside recording at ${width}`);
+            assert(layout.screenshotButton.x >= layout.recordButton.right, `capture buttons overlap at ${width}`);
+            assert(await page.locator('#devScreenshotBtn img').evaluate(img => img.complete && img.naturalWidth > 0));
             if (width > 1080) {
                 assert(Math.abs(layout.install.y - layout.left.y) < 1);
                 assert(Math.abs(layout.command.y - layout.left.y) < 1);
@@ -124,6 +129,10 @@ test('device workspace keeps installation and command logs readable', { timeout:
         await page.locator('#devRecordDevice').selectOption('192.0.2.11:5555');
         await page.locator('#devRecordToggleBtn').click();
         await page.waitForFunction(() => document.getElementById('devRecordToggleBtn').textContent === '停止录屏并保存');
+        await page.locator('#devScreenshotBtn').click();
+        await page.waitForFunction(() => document.getElementById('devScreenshotStatus').textContent.includes('screenshot-20261103-120000-12345.png'));
+        assert.equal(await page.locator('#devRecordToggleBtn').textContent(), '停止录屏并保存');
+        assert.equal(await page.locator('#devRecordDevice').isDisabled(), true);
         await page.locator('#devRecordToggleBtn').click();
         await page.waitForFunction(() => document.getElementById('devRecordToggleBtn').textContent === '开始录屏');
         assert(await page.locator('#devApkList').evaluate(el => el.scrollHeight > el.clientHeight));

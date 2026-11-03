@@ -1168,6 +1168,26 @@
             flex: 0 0 auto;
         }
 
+        .btn-group.dev-capture-actions .btn {
+            flex: 0 0 auto;
+            min-height: 34px;
+        }
+
+        #devScreenshotBtn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-width: 100px;
+        }
+
+        #devScreenshotBtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #devScreenshotStatus:empty { display: none; }
+
         .dev-device-section {
             display: flex;
             flex-direction: column;
@@ -2467,7 +2487,7 @@
 
                 <section class="feature-section dev-record-section tone-cyan">
                 <div class="section-header" style="margin-top:25px;">
-                    <span class="section-title">手动录屏</span>
+                    <span class="section-title">录屏与截图</span>
                 </div>
 
                 <div class="alert alert-info" style="font-size:13px;">选择目标设备后开始录屏，停止后会保存到输出目录的 recordings 文件夹。单次最长 180 秒。</div>
@@ -2479,11 +2499,16 @@
                     </select>
                 </div>
 
-                <div class="btn-group" style="margin-top:8px;">
+                <div class="btn-group dev-capture-actions" style="margin-top:8px;">
                     <button class="btn btn-primary" id="devRecordToggleBtn" onclick="devToggleRecording()">开始录屏</button>
+                    <button class="btn btn-secondary" id="devScreenshotBtn" onclick="devTakeScreenshot()" title="截图并复制">
+                        <img src="assets/camera.svg" width="16" height="16" alt="" aria-hidden="true">
+                        <span id="devScreenshotLabel">截图</span>
+                    </button>
                 </div>
 
                 <div class="status-text" id="devRecordStatus"></div>
+                <div class="status-text" id="devScreenshotStatus" role="status" aria-live="polite"></div>
                 </section>
                 </div>
 
@@ -3543,6 +3568,8 @@
         let devInstallActive = null;
         let devRecording = false;
         let devRecordingBusy = false;
+        let devRecordingSerial = '';
+        let devScreenshotBusy = false;
         const devCommandHistoryKey = 'voiceQa.adbCommandHistory.v1';
         let devCommandHistory = devReadCommandHistory();
         const devLAN = { visible: false, mode: '', stopping: false, requestID: '', sequence: 0, networks: [], devices: new Map(), selected: new Set(), connections: new Map(), renderTimer: null };
@@ -3972,6 +3999,7 @@
         function devSyncRecordDeviceSelect() {
             const select = document.getElementById('devRecordDevice');
             if (!select) return;
+            if (devRecording || devRecordingBusy || devScreenshotBusy) return;
             const prev = select.value;
             select.innerHTML = '<option value="">-- 自动选择唯一设备 --</option>';
             globalDevices.forEach(device => {
@@ -4001,12 +4029,19 @@
                 button.textContent = devRecording ? '停止录屏并保存' : '开始录屏';
             }
             if (deviceSelect) {
-                deviceSelect.disabled = devRecording || devRecordingBusy;
+                deviceSelect.disabled = devRecording || devRecordingBusy || devScreenshotBusy;
+            }
+            const screenshotButton = document.getElementById('devScreenshotBtn');
+            if (screenshotButton) {
+                screenshotButton.disabled = devScreenshotBusy || devRecordingBusy;
+                screenshotButton.setAttribute('aria-busy', String(devScreenshotBusy));
+                document.getElementById('devScreenshotLabel').textContent = devScreenshotBusy ? '截图中...' : '截图';
             }
         }
 
         function devSetRecordingState(recording, statusText) {
             devRecording = recording;
+            if (!recording) devRecordingSerial = '';
             const status = document.getElementById('devRecordStatus');
             if (status && statusText) status.textContent = statusText;
             devRenderRecordingControl();
@@ -4031,6 +4066,7 @@
             try {
                 const result = await window.go.main.App.StartManualScreenRecording(serial);
                 if (result.success) {
+                    devRecordingSerial = result.serial;
                     devSetRecordingState(true, '录屏中: ' + result.serial + '，最长 180 秒');
                     devAppendOutput(result.message, 'success');
                     if (result.path) devAppendOutput('预计保存路径: ' + result.path, 'info');
@@ -4043,6 +4079,7 @@
                 devAppendOutput('启动录屏异常: ' + e, 'error');
             } finally {
                 devRecordingBusy = false;
+                devSyncRecordDeviceSelect();
                 devRenderRecordingControl();
             }
         }
@@ -4063,6 +4100,29 @@
                 devAppendOutput('停止录屏异常: ' + e, 'error');
             } finally {
                 devRecordingBusy = false;
+                devSyncRecordDeviceSelect();
+                devRenderRecordingControl();
+            }
+        }
+
+        async function devTakeScreenshot() {
+            if (devScreenshotBusy || devRecordingBusy) return;
+            const serial = devRecording ? devRecordingSerial : document.getElementById('devRecordDevice').value;
+            const status = document.getElementById('devScreenshotStatus');
+            devScreenshotBusy = true;
+            devRenderRecordingControl();
+            status.textContent = '正在截图...';
+            devAppendOutput('截取全屏' + (serial ? '：' + serial : '，自动选择唯一设备'), 'info');
+            try {
+                const result = await window.go.main.App.CaptureDeviceScreenshot(serial);
+                status.textContent = result.success ? result.message : '截图失败：' + result.message;
+                devAppendOutput(status.textContent, result.success && result.clipboardCopied ? 'success' : 'error');
+            } catch (e) {
+                status.textContent = '截图失败：' + e;
+                devAppendOutput(status.textContent, 'error');
+            } finally {
+                devScreenshotBusy = false;
+                devSyncRecordDeviceSelect();
                 devRenderRecordingControl();
             }
         }
