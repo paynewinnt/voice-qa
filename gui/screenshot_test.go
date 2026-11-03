@@ -41,7 +41,9 @@ func screenshotCommand(t *testing.T, data []byte, mode string) func(context.Cont
 	}
 	return func(ctx context.Context, args ...string) *exec.Cmd {
 		t.Helper()
-		if !reflect.DeepEqual(args, []string{"-s", "192.0.2.11:5555", "exec-out", "screencap", "-p"}) {
+		direct := []string{"-s", "192.0.2.11:5555", "exec-out", "screencap", "-p"}
+		fallback := []string{"-s", "192.0.2.11:5555", "shell", "-T", "screencap", "-p"}
+		if !reflect.DeepEqual(args, direct) && !reflect.DeepEqual(args, fallback) {
 			t.Fatalf("unexpected screenshot command: %q", args)
 		}
 		if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > 30*time.Second {
@@ -125,9 +127,21 @@ func TestSaveDeviceScreenshotFailureRemovesIncompleteFile(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
-			path, err := saveDeviceScreenshot(ctx, "192.0.2.11:5555", dir, screenshotCommand(t, tc.data, tc.mode))
+			calls := 0
+			command := screenshotCommand(t, tc.data, tc.mode)
+			path, err := saveDeviceScreenshot(ctx, "192.0.2.11:5555", dir, func(ctx context.Context, args ...string) *exec.Cmd {
+				calls++
+				return command(ctx, args...)
+			})
 			if path != "" || err == nil || !strings.Contains(err.Error(), tc.message) {
 				t.Fatalf("unexpected result: %s %v", path, err)
+			}
+			wantCalls := 1
+			if tc.mode == "ok" {
+				wantCalls = 2
+			}
+			if calls != wantCalls {
+				t.Fatalf("capture attempts: got %d, want %d", calls, wantCalls)
 			}
 			if tc.mode == "block" && !errors.Is(err, context.DeadlineExceeded) {
 				t.Fatalf("lost deadline error: %v", err)
@@ -139,6 +153,132 @@ func TestSaveDeviceScreenshotFailureRemovesIncompleteFile(t *testing.T) {
 			got, err := os.ReadFile(previous)
 			if err != nil || !bytes.Equal(got, data) {
 				t.Fatal("previous screenshot modified")
+			}
+		})
+	}
+}
+
+func TestScreenshotPNGNormalizationPreservesPixelsAndRejectsCorruption(t *testing.T) {
+	fixture := screenshotFixture(t)
+	text := []byte("comment\x00keep\r\noriginal\r\nbytes")
+	chunk := make([]byte, len(text)+12)
+	binary.BigEndian.PutUint32(chunk[:4], uint32(len(text)))
+	copy(chunk[4:8], "tEXt")
+	copy(chunk[8:], text)
+	binary.BigEndian.PutUint32(chunk[len(chunk)-4:], crc32.ChecksumIEEE(chunk[4:len(chunk)-4]))
+	data := append(bytes.Clone(fixture[:len(fixture)-12]), chunk...)
+	data = append(data, fixture[len(fixture)-12:]...)
+	translated := bytes.ReplaceAll(data, []byte("\n"), []byte("\r\n"))
+	corrupt := bytes.Clone(data)
+	corrupt[29] ^= 1
+	for _, tc := range []struct {
+		name string
+		data []byte
+		ok   bool
+	}{
+		{name: "unchanged CRLF", data: data, ok: true},
+		{name: "prefix", data: append([]byte("vendor screencap diagnostic\r\n"), data...), ok: true},
+		{name: "suffix", data: append(bytes.Clone(data), []byte("\nprocess exited\n")...), ok: true},
+		{name: "prefix and suffix", data: append(append([]byte("capture\n"), data...), []byte("done\n")...), ok: true},
+		{name: "translated newlines", data: translated, ok: true},
+		{name: "translated with diagnostics", data: append(append([]byte("capture\r\n"), translated...), []byte("done\r\n")...), ok: true},
+		{name: "corrupt checksum", data: append([]byte("capture\n"), corrupt...)},
+		{name: "truncated", data: append([]byte("capture\n"), data[:len(data)-12]...)},
+		{name: "translated truncated", data: translated[:len(translated)-12]},
+		{name: "text", data: []byte("screencap: permission denied")},
+		{name: "empty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := normalizeScreenshotPNG(tc.data)
+			if tc.ok {
+				if err != nil || !bytes.Equal(got, data) {
+					t.Fatalf("PNG altered: %v", err)
+				}
+			} else if err == nil || got != nil {
+				t.Fatalf("invalid PNG accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestSaveDeviceScreenshotNormalizesBeforeClipboard(t *testing.T) {
+	app := NewApp()
+	app.cfg = config.DefaultConfig()
+	app.cfg.OutputDir = t.TempDir()
+	data := screenshotFixture(t)
+	raw := append(append([]byte("vendor diagnostic\r\n"), bytes.ReplaceAll(data, []byte("\n"), []byte("\r\n"))...), []byte("\r\ndone\r\n")...)
+	command := screenshotCommand(t, raw, "ok")
+	calls := 0
+	result := app.captureDeviceScreenshot("192.0.2.11:5555", func(serial string) (string, error) { return serial, nil },
+		func(ctx context.Context, serial, dir string) (string, error) {
+			return saveDeviceScreenshot(ctx, serial, dir, func(ctx context.Context, args ...string) *exec.Cmd {
+				calls++
+				return command(ctx, args...)
+			})
+		}, func(ctx context.Context, path string) error {
+			got, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(got, data) {
+				t.Fatalf("clipboard did not receive the clean PNG: %v", err)
+			}
+			return nil
+		})
+	if !result.Success || !result.ClipboardCopied || calls != 1 {
+		t.Fatalf("unexpected capture: %+v, attempts=%d", result, calls)
+	}
+}
+
+func TestSaveDeviceScreenshotRetriesWithoutPTY(t *testing.T) {
+	data := screenshotFixture(t)
+	for _, validFallback := range []bool{true, false} {
+		t.Run(map[bool]string{true: "success", false: "diagnostics"}[validFallback], func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			calls := 0
+			command := func(callCtx context.Context, args ...string) *exec.Cmd {
+				calls++
+				want := []string{"-s", "192.0.2.11:5555", "exec-out", "screencap", "-p"}
+				output := []byte("exec-out unsupported\n" + strings.Repeat("x", 4096))
+				if calls == 2 {
+					want = []string{"-s", "192.0.2.11:5555", "shell", "-T", "screencap", "-p"}
+					output = []byte("screencap: permission denied\n" + strings.Repeat("y", 4096))
+					if validFallback {
+						output = data
+					}
+				}
+				if calls > 2 || callCtx != ctx || !reflect.DeepEqual(args, want) {
+					t.Fatalf("unexpected fallback: attempt=%d args=%q", calls, args)
+				}
+				return screenshotCommand(t, output, "ok")(callCtx, args...)
+			}
+			dir := t.TempDir()
+			path, err := saveDeviceScreenshot(ctx, "192.0.2.11:5555", dir, command)
+			if calls != 2 {
+				t.Fatalf("capture attempts: got %d, want 2", calls)
+			}
+			if validFallback {
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := os.ReadFile(path)
+				if err != nil || !bytes.Equal(got, data) {
+					t.Fatalf("fallback PNG contains previous output: %v", err)
+				}
+			} else {
+				if err == nil || path != "" {
+					t.Fatalf("invalid fallback accepted: %s %v", path, err)
+				}
+				for _, want := range []string{"exec-out screencap -p", "shell -T screencap -p", "exec-out unsupported", "permission denied", "daemon diagnostic"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Fatalf("missing diagnostic %q: %v", want, err)
+					}
+				}
+				if len(err.Error()) > 2048 {
+					t.Fatal("unbounded error diagnostics")
+				}
+				files, err := os.ReadDir(dir)
+				if err != nil || len(files) != 0 {
+					t.Fatalf("invalid fallback left a file: %v %v", files, err)
+				}
 			}
 		})
 	}

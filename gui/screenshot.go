@@ -102,29 +102,89 @@ func saveDeviceScreenshot(ctx context.Context, serial, dir string, command func(
 		}
 	}()
 
-	cmd := command(ctx, "-s", serial, "exec-out", "screencap", "-p")
-	var stderr bytes.Buffer
-	cmd.Stdout = file
-	cmd.Stderr = &stderr
-	cmd.WaitDelay = 2 * time.Second
-	hideConsoleWindow(cmd)
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
-			err = ctx.Err()
+	var attempts []error
+	for _, args := range [][]string{
+		{"-s", serial, "exec-out", "screencap", "-p"},
+		{"-s", serial, "shell", "-T", "screencap", "-p"},
+	} {
+		if err := ctx.Err(); err != nil {
+			return "", err
 		}
-		return "", fmt.Errorf("截取设备全屏失败: %w；%s", err, strings.TrimSpace(stderr.String()))
+		if err := file.Truncate(0); err != nil {
+			return "", fmt.Errorf("重置截图文件失败: %w", err)
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return "", fmt.Errorf("定位截图文件失败: %w", err)
+		}
+		cmd := command(ctx, args...)
+		var stderr bytes.Buffer
+		cmd.Stdout = file
+		cmd.Stderr = &stderr
+		cmd.WaitDelay = 2 * time.Second
+		hideConsoleWindow(cmd)
+		if err := cmd.Run(); err != nil {
+			if ctx.Err() != nil {
+				err = ctx.Err()
+			}
+			attempts = append(attempts, fmt.Errorf("截取设备全屏失败 (%s): %w；stderr=%q", strings.Join(args[2:], " "), err, stderr.Bytes()[:min(stderr.Len(), 160)]))
+			return "", errors.Join(attempts...)
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return "", fmt.Errorf("读取截图文件失败: %w", err)
+		}
+		const maxBytes = 256 * 1024 * 1024
+		data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+		if err != nil {
+			return "", fmt.Errorf("读取截图文件失败: %w", err)
+		}
+		if len(data) > maxBytes {
+			return "", fmt.Errorf("截图数据超过 256 MB，已停止处理")
+		}
+		clean, err := normalizeScreenshotPNG(data)
+		if err != nil {
+			attempts = append(attempts, fmt.Errorf("设备返回的截图不是完整 PNG (%s, %d 字节): %w；stdout 前缀=%q；stderr=%q", strings.Join(args[2:], " "), len(data), err, data[:min(len(data), 96)], stderr.Bytes()[:min(stderr.Len(), 160)]))
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		if !bytes.Equal(clean, data) {
+			if err := file.Truncate(0); err != nil {
+				return "", fmt.Errorf("重写截图文件失败: %w", err)
+			}
+			if _, err := file.Seek(0, io.SeekStart); err != nil {
+				return "", fmt.Errorf("定位截图文件失败: %w", err)
+			}
+			if _, err := file.Write(clean); err != nil {
+				return "", fmt.Errorf("保存截图文件失败: %w", err)
+			}
+		}
+		closed = true
+		if err := file.Close(); err != nil {
+			return "", fmt.Errorf("保存截图文件失败: %w", err)
+		}
+		return file.Name(), nil
 	}
-	if err := validateScreenshotPNG(file); err != nil {
-		return "", fmt.Errorf("设备返回的截图不是完整 PNG: %w", err)
+	return "", errors.Join(attempts...)
+}
+
+func normalizeScreenshotPNG(data []byte) ([]byte, error) {
+	start := bytes.Index(data, []byte("\x89PNG\r\n\x1a\n"))
+	translated := bytes.Index(data, []byte("\x89PNG\r\r\n\x1a\r\n"))
+	// Only undo terminal newline translation when its signature is present.
+	if translated >= 0 && (start < 0 || translated < start) {
+		data = bytes.ReplaceAll(data[translated:], []byte("\r\n"), []byte("\n"))
+		start = 0
 	}
-	if err := ctx.Err(); err != nil {
-		return "", err
+	if start < 0 {
+		return nil, fmt.Errorf("未找到 PNG 文件头")
 	}
-	closed = true
-	if err := file.Close(); err != nil {
-		return "", fmt.Errorf("保存截图文件失败: %w", err)
+	reader := bytes.NewReader(data[start:])
+	if err := validateScreenshotPNG(reader); err != nil {
+		return nil, err
 	}
-	return file.Name(), nil
+	// Decode consumes through IEND, leaving any trailing device diagnostics out.
+	return data[start : len(data)-reader.Len()], nil
 }
 
 func validateScreenshotPNG(file io.ReadSeeker) error {
